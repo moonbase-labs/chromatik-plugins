@@ -1,0 +1,20 @@
+# Maven build output
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.classpath
+*.project
+*.settings/
+
+# macOS
+.DS_Store
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json
+
+# Java
+*.class
+hs_err_pid*
