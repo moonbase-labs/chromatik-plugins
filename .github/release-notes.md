@@ -43,19 +43,7 @@ Videos kept anywhere under your `Chromatik` folder are saved as relative paths, 
 
 Every file here was loaded on real hardware of its platform before release: FFmpeg natives loaded and frames decoded on macOS arm64, macOS x86_64, Windows x86_64, Linux x86_64 and Linux arm64.
 
-That check covers decoding. Installing and playing end to end inside Chromatik is regularly exercised on macOS only, so if something looks wrong on another platform please [open an issue](https://github.com/moonbase-labs/chromatik-plugins/issues).
-
-<details>
-<summary>macOS: if the pattern loads but no video plays</summary>
-
-macOS tags files downloaded through a browser, which can stop the bundled FFmpeg libraries from loading. To clear the tag:
-
-```bash
-xattr -dr com.apple.quarantine ~/Chromatik/Packages/chromatik-video-{{VERSION}}-macos.jar
-```
-
-Then restart Chromatik.
-</details>
+That check covers decoding. Installing and playing end to end inside Chromatik is exercised on macOS, so if something looks wrong on another platform please [open an issue](https://github.com/moonbase-labs/chromatik-plugins/issues).
 
 ## Checksums
 

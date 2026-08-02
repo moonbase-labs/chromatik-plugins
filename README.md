@@ -59,18 +59,7 @@ Drop the `.jar` in your Chromatik packages folder and restart the app. Chromatik
 
 </details>
 
-<details>
-<summary><b>macOS: pattern loads but no video plays</b></summary>
-
-macOS tags files downloaded through a browser, which can stop the bundled FFmpeg libraries loading. Clear the tag and restart Chromatik:
-
-```bash
-xattr -dr com.apple.quarantine ~/Chromatik/Packages/chromatik-video-*-macos.jar
-```
-
-</details>
-
-Every release is loaded on real hardware of each platform before it ships, so the FFmpeg natives are known to load and decode on all four. Playing end to end inside Chromatik is exercised regularly on macOS only, so please [open an issue](https://github.com/moonbase-labs/chromatik-plugins/issues) if another platform misbehaves.
+Every release is loaded on real hardware of each platform before it ships, so the FFmpeg natives are known to load and decode on all four. Installing and playing end to end inside Chromatik is exercised on macOS, so please [open an issue](https://github.com/moonbase-labs/chromatik-plugins/issues) if another platform misbehaves.
 
 ## 📦 What's in here
 
