@@ -1,4 +1,4 @@
-package laserphile.chromatik.video;
+package laserphile.chromatik.core;
 
 import heronarts.lx.model.LXModel;
 import heronarts.lx.parameter.CompoundParameter;
@@ -21,7 +21,7 @@ import heronarts.lx.parameter.LXParameter;
  * Each pattern owns its own instance. A parameter belongs to a single component, so a shared
  * instance would fail loudly on the second pattern to register it.
  */
-final class ProjectionControls {
+public final class ProjectionControls {
 
   public final CompoundParameter yaw =
     new CompoundParameter("Yaw", 0, -180, 180).setDescription("Rotation about the vertical axis");
@@ -90,7 +90,7 @@ final class ProjectionControls {
   private final ProjectionParams params = new ProjectionParams();
   private final Projector projector = new Projector();
 
-  ProjectionControls() {
+  public ProjectionControls() {
     // Two things ride on these two blocks. The insertion order is the order the controls appear in
     // the panel, because a collection keeps what it is given in order. And each key becomes the
     // parameter's saved path, so these strings are what a saved project stores: changing one
@@ -124,7 +124,7 @@ final class ProjectionControls {
    * Engine thread only. The snapshot is taken once per frame so the per-point loop inside
    * {@link Projector} never has to read a parameter or compute a trig function.
    */
-  void project(VideoFrame frame, LXModel model, int[] colors) {
+  public void project(VideoFrame frame, LXModel model, int[] colors) {
     this.params.yaw = this.yaw.getValue();
     this.params.pitch = this.pitch.getValue();
     this.params.roll = this.roll.getValue();

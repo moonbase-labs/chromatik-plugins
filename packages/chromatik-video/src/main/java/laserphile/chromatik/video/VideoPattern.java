@@ -4,6 +4,13 @@ import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+import laserphile.chromatik.core.FramePipeline;
+import laserphile.chromatik.core.FrameSource;
+import laserphile.chromatik.core.ProjectionControls;
+import laserphile.chromatik.core.ProjectionParams;
+import laserphile.chromatik.core.VideoFrame;
+import laserphile.chromatik.core.WorkingResolution;
+
 import heronarts.glx.GLX;
 import heronarts.lx.LX;
 import heronarts.lx.LXCategory;
@@ -24,12 +31,41 @@ import heronarts.lx.pattern.LXPattern;
  * restart) drives the playhead on this thread and reaches the decoder through the pipeline's
  * mailbox, so nothing here blocks on decode or I/O.
  *
- * For the live desktop rather than a file, see {@link ScreenCapturePattern}, which shares the
- * projection controls but has no timeline and so none of the transport.
+ * For the live desktop rather than a file, install the Laserphile Screen Capture package, whose
+ * pattern shares these projection controls but has no timeline and so none of the transport.
+ *
+ * The projection and decode machinery lives in the separate Laserphile Core package, which has to
+ * be installed alongside this one.
  */
 @LXCategory("Laserphile")
 @LXComponent.Name("Video")
 public class VideoPattern extends LXPattern {
+
+  /**
+   * Chromatik cannot express a dependency between packages, so nothing stops this one being
+   * installed on its own. Without the core package the first thing to touch it fails with a bare
+   * NoClassDefFoundError naming an internal class, which says nothing about what to do. Checking
+   * here turns that into a sentence.
+   *
+   * A static block runs at class initialisation, which happens when the pattern is first added to
+   * a channel rather than when Chromatik scans the jar, so the pattern still lists normally and
+   * only explains itself when someone reaches for it.
+   */
+  static {
+    requireCorePackage();
+  }
+
+  private static void requireCorePackage() {
+    try {
+      Class.forName("laserphile.chromatik.core.FramePipeline");
+    } catch (ClassNotFoundException missing) {
+      throw new IllegalStateException(
+        "The Laserphile Video package needs the Laserphile Core package, which is not installed. "
+          + "Install the chromatik-core jar for your platform into ~/Chromatik/Packages and "
+          + "restart Chromatik.",
+        missing);
+    }
+  }
 
   /**
    * How long the playhead readout holds still after the user edits it. Without the pause, the

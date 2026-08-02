@@ -1,4 +1,4 @@
-package laserphile.chromatik.video;
+package laserphile.chromatik.core;
 
 import heronarts.lx.model.LXModel;
 import heronarts.lx.model.LXPoint;

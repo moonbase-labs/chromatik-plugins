@@ -1,4 +1,4 @@
-package laserphile.chromatik.video;
+package laserphile.chromatik.core;
 
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 
@@ -11,7 +11,7 @@ import org.bytedeco.javacv.FFmpegFrameGrabber;
  * scaler is already converting every frame and resizing is part of the same pass, and it leaves a
  * buffer small enough to stay in cache while the projection walks it.
  */
-final class WorkingResolution {
+public final class WorkingResolution {
 
   /**
    * The smallest longest-edge worth decoding at. Below this the picture stops being recognisable
@@ -20,10 +20,10 @@ final class WorkingResolution {
   private static final int SMALLEST_EDGE = 128;
 
   /** What the Res control offers. Every pattern that opens a source shows the same list. */
-  static final String[] OPTIONS = { "128", "256", "384", "512", "Auto" };
+  public static final String[] OPTIONS = { "128", "256", "384", "512", "Auto" };
 
   /** Which entry above is Auto, and so the default. */
-  static final int AUTO_OPTION = 4;
+  public static final int AUTO_OPTION = 4;
 
   /** Longest edge per entry in {@link #OPTIONS}. 0 signals "work it out from the model". */
   private static final int[] EDGES = { 128, 256, 384, 512, 0 };
@@ -31,7 +31,7 @@ final class WorkingResolution {
   /**
    * The chosen Res entry as a longest edge, working it out from the model when the entry is Auto.
    */
-  static int edgeFor(int option, int pointCount) {
+  public static int edgeFor(int option, int pointCount) {
     final int chosen = EDGES[option];
 
     return chosen > 0 ? chosen : forPointCount(pointCount);
@@ -45,7 +45,7 @@ final class WorkingResolution {
    * enough detail that bilinear sampling has something to interpolate between rather than landing
    * on the same pixel as its neighbour.
    */
-  static int forPointCount(int pointCount) {
+  public static int forPointCount(int pointCount) {
     final int derived = (int) Math.round(2 * Math.sqrt(Math.max(0, pointCount)));
 
     return Math.max(SMALLEST_EDGE, derived);
@@ -63,7 +63,7 @@ final class WorkingResolution {
    * <p>Never enlarges. Asking for 512 from a 320-wide clip gets 320, since inventing pixels only
    * costs memory and gives the projection nothing it did not already have.
    */
-  static void applyTo(FFmpegFrameGrabber grabber, int longestEdge) {
+  public static void applyTo(FFmpegFrameGrabber grabber, int longestEdge) {
     final int nativeWidth = grabber.getImageWidth();
     final int nativeHeight = grabber.getImageHeight();
     final int nativeLongestEdge = Math.max(nativeWidth, nativeHeight);

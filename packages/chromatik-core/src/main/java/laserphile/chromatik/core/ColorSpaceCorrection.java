@@ -1,4 +1,4 @@
-package laserphile.chromatik.video;
+package laserphile.chromatik.core;
 
 import org.bytedeco.ffmpeg.avcodec.AVCodecParameters;
 import org.bytedeco.ffmpeg.avformat.AVFormatContext;
@@ -31,7 +31,7 @@ import heronarts.lx.LX;
  * reference clip, holding the rails cuts the average error from 2.78 to 0.67, against 1.24 for
  * correcting everything.
  */
-final class ColorSpaceCorrection {
+public final class ColorSpaceCorrection {
 
   /**
    * Red, green and blue mixing weights that carry a BT.601-decoded pixel to where BT.709 would
@@ -60,7 +60,7 @@ final class ColorSpaceCorrection {
   private static final int WEIGHT_HALF = 1 << (WEIGHT_SHIFT - 1);
 
   /** Used when the source needs no correction, so callers never have to null-check. */
-  static final ColorSpaceCorrection NONE = new ColorSpaceCorrection(false);
+  public static final ColorSpaceCorrection NONE = new ColorSpaceCorrection(false);
 
   private final boolean enabled;
 
@@ -92,7 +92,7 @@ final class ColorSpaceCorrection {
    * the decoder's BT.601 assumption is either right or is the same guess anyone else would make,
    * and correcting on a guess would damage genuinely standard-definition footage.
    */
-  static ColorSpaceCorrection forStream(FFmpegFrameGrabber grabber, String sourceName) {
+  public static ColorSpaceCorrection forStream(FFmpegFrameGrabber grabber, String sourceName) {
     final AVCodecParameters codecParameters = videoCodecParameters(grabber);
 
     if (codecParameters == null) {
@@ -134,7 +134,7 @@ final class ColorSpaceCorrection {
    * Rewrite a frame's pixels in place. Runs on the decode thread, before the frame is published,
    * so the engine thread never sees an uncorrected pixel and never pays for the correction.
    */
-  void applyInPlace(int[] argb) {
+  public void applyInPlace(int[] argb) {
     if (!this.enabled) {
       return;
     }

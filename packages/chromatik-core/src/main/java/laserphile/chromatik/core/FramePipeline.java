@@ -1,4 +1,4 @@
-package laserphile.chromatik.video;
+package laserphile.chromatik.core;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -31,7 +31,7 @@ import heronarts.lx.LX;
  * rapid scrub coalesces down to its newest target and any frames still in flight from earlier
  * targets are discarded rather than shown.
  */
-final class FramePipeline {
+public final class FramePipeline {
 
   /**
    * Eight frames is about a quarter second of lookahead at 30fps: enough to absorb decode
@@ -82,7 +82,7 @@ final class FramePipeline {
   /** A seek order. Only the newest matters, so a new one replaces the old rather than queueing. */
   private record SeekRequest(int generation, long mediaTimeMs) {}
 
-  void start(FrameSource source, int longestEdge) {
+  public void start(FrameSource source, int longestEdge) {
     stop();
 
     final int epoch = this.startEpoch.incrementAndGet();
@@ -308,7 +308,7 @@ final class FramePipeline {
    * Pairs with a recorded source. A live source fills the other buffer, so calling this on one
    * returns null for as long as it runs rather than failing outright.
    */
-  VideoFrame frameFor(long streamTimeMs) {
+  public VideoFrame frameFor(long streamTimeMs) {
     VideoFrame head;
 
     while ((head = this.ring.peek()) != null) {
@@ -342,27 +342,27 @@ final class FramePipeline {
    * Pairs with a live source. There is no time argument because a live source has no timeline: the
    * newest frame is the only one it holds and the only one worth showing.
    */
-  VideoFrame latestFrame() {
+  public VideoFrame latestFrame() {
     return this.latestLiveFrame.get();
   }
 
   /** Post a seek for the decode thread. Repeated calls coalesce to the newest target. */
-  void requestSeek(long mediaTimeMs) {
+  public void requestSeek(long mediaTimeMs) {
     this.seekGeneration++;
     this.endOfStream = false;
     this.seekRequest.set(new SeekRequest(this.seekGeneration, Math.max(0, mediaTimeMs)));
   }
 
-  void setLooping(boolean looping) {
+  public void setLooping(boolean looping) {
     this.looping = looping;
   }
 
-  long durationMs() {
+  public long durationMs() {
     return this.durationMs;
   }
 
   /** True once the source has run out with looping off and the buffered frames have played out. */
-  boolean isDrained() {
+  public boolean isDrained() {
     return this.endOfStream && this.ring.isEmpty();
   }
 
@@ -371,7 +371,7 @@ final class FramePipeline {
    * source that stays false is one that opened but is producing nothing, which is how a screen
    * capture without permission presents itself.
    */
-  boolean hasPublishedFrame() {
+  public boolean hasPublishedFrame() {
     return this.publishedAnyFrame;
   }
 
@@ -384,7 +384,7 @@ final class FramePipeline {
    * daemon, so it cannot keep the app alive, and the epoch it captured at start stops it from
    * touching anything once it does come back.
    */
-  void stop() {
+  public void stop() {
     this.running = false;
 
     if (this.thread != null) {

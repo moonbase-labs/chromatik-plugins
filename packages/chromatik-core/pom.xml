@@ -1,0 +1,286 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      relativePath is required: Maven's default is ../pom.xml, which is wrong two levels
+      down. Pointing it at the real file also lets `mvn` run inside this directory without
+      the parent having been installed to ~/.m2 first.
+    -->
+    <parent>
+        <groupId>laserphile</groupId>
+        <artifactId>chromatik-plugins</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>chromatik-core</artifactId>
+    <name>Laserphile Core</name>
+
+    <!--
+      The shared runtime for every Laserphile plugin that puts a frame on the model: the
+      projection stage, the frame pipeline, and the FFmpeg decode stack the plugins compile
+      against but do not carry.
+
+      It is a Chromatik package in its own right, with its own lx.package, rather than a bare
+      library jar. That is deliberate. Chromatik hands every jar in its Packages folder to one
+      shared class loader, so a plugin resolves these classes from here at runtime, but it also
+      registers every public class it finds against the package that supplied it and logs an
+      error for any name it has already seen. Bundling the decode stack in each plugin instead
+      would mean 328 duplicate-class errors the moment two of them are installed together.
+
+      Everything else is inherited from the root pom: the provided LX dependencies, compiler
+      settings, lx.package filtering, the shade config and the install profile. javacv is
+      platform-independent and its version comes from the root's dependencyManagement. It is
+      compile scope here, and only here, so shade packs it into this jar alone.
+
+      The platform natives that go with it are declared per dist-* profile below.
+    -->
+    <!--
+      javacv is a front end over more than a dozen native libraries, and it depends on all of
+      their Java bindings at compile scope rather than optionally. Left alone, the uber-jar
+      carries OpenCV, OpenBLAS, Tesseract, Leptonica, two Kinect drivers, two RealSense drivers,
+      FlyCapture, libdc1394, videoinput and ARToolKitPlus: roughly 1,900 classes of bindings for
+      natives that are not bundled and could never load. Chromatik scans every class in a package
+      jar, so each one is also a NoClassDefFoundError in the log at startup.
+
+      Only ffmpeg and javacpp are wanted, so the rest are excluded here.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacv</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>openblas</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>tesseract</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>leptonica</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>flycapture</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>libdc1394</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>libfreenect</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>libfreenect2</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>librealsense</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>librealsense2</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>videoinput</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>artoolkitplus</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+
+    <!--
+      Dropping those dependencies leaves javacv's own classes for them behind, and they are just
+      as unloadable: OpenCVFrameConverter, LeptonicaFrameConverter, every grabber for a camera we
+      do not ship, and the OpenCL helpers. Keeping only what the decode path reaches is a shorter
+      and more durable rule than listing what to throw away, since a later javacv adds classes to
+      the second list but not to the first.
+
+      The list below is the transitive closure of FFmpegFrameGrabber, Java2DFrameConverter, Frame,
+      FrameGrabber and FrameConverter over javacv's own package, so anything reachable from what
+      the plugin calls is here. Nothing in that closure names another javacv class reflectively,
+      so there is no path the closure misses.
+
+      From javacpp only the Maven plugin mojos go. They are the ones that reference the Maven APIs
+      and so cannot load, and they are plainly build-time code. The rest of its tools package
+      stays: JavaCPP's loader reads each native binding's preset class at runtime to work out
+      which library to extract, those preset classes implement InfoMapper from tools, and dropping
+      the package takes InfoMapper with it. The release gate caught exactly that, refusing to
+      compile against the trimmed jar.
+
+      These filters live here rather than in the parent because they name the decode stack
+      specifically, and a plugin that decodes nothing should not inherit them.
+    -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <filters combine.children="append">
+                                <filter>
+                                    <artifact>org.bytedeco:javacv</artifact>
+                                    <includes>
+                                        <include>org/bytedeco/javacv/FFmpegFrameGrabber*.class</include>
+                                        <include>org/bytedeco/javacv/Frame.class</include>
+                                        <include>org/bytedeco/javacv/Frame$*.class</include>
+                                        <include>org/bytedeco/javacv/FrameConverter.class</include>
+                                        <include>org/bytedeco/javacv/FrameGrabber.class</include>
+                                        <include>org/bytedeco/javacv/FrameGrabber$*.class</include>
+                                        <include>org/bytedeco/javacv/Java2DFrameConverter.class</include>
+                                    </includes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.bytedeco:javacpp</artifact>
+                                    <excludes>
+                                        <exclude>org/bytedeco/javacpp/tools/*Mojo.class</exclude>
+                                        <exclude>org/bytedeco/javacpp/tools/*Mojo$*.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!--
+      One profile per distributable jar. Each picks the FFmpeg and JavaCPP natives for its
+      target and names the jar after it, so a release asset says on the tin which machines
+      it runs on. Chromatik loads whichever jar the user installed; JavaCPP then picks the
+      matching native out of it at runtime by inspecting the current platform.
+
+      Building for a platform is `mvn package -Pdist-<name>`.
+
+      dist-macos is the default so a plain `mvn package` here produces exactly the jar Mac
+      users download, rather than a dev-only variant nobody else ever runs. Maven turns an
+      activeByDefault profile off as soon as another profile IN THE SAME POM is selected, so
+      `-Pdist-windows` swaps cleanly. The root pom's `install` profile lives in a different
+      pom and so leaves this alone, which is what makes `mvn -Pinstall install` still work.
+
+      It carries both Mac architectures on purpose. Splitting them would save ~23 MB per
+      download at the cost of making every Mac user identify their own CPU first, and
+      getting it wrong surfaces as a native-load stack trace rather than a clear message.
+    -->
+    <profiles>
+        <profile>
+            <id>dist-macos</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-macos</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>ffmpeg</artifactId>
+                    <version>${ffmpeg.version}</version>
+                    <classifier>macosx-arm64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>javacpp</artifactId>
+                    <version>${javacv.version}</version>
+                    <classifier>macosx-arm64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>ffmpeg</artifactId>
+                    <version>${ffmpeg.version}</version>
+                    <classifier>macosx-x86_64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>javacpp</artifactId>
+                    <version>${javacv.version}</version>
+                    <classifier>macosx-x86_64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>dist-windows</id>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-windows</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>ffmpeg</artifactId>
+                    <version>${ffmpeg.version}</version>
+                    <classifier>windows-x86_64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>javacpp</artifactId>
+                    <version>${javacv.version}</version>
+                    <classifier>windows-x86_64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>dist-linux-x86_64</id>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-linux-x86_64</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>ffmpeg</artifactId>
+                    <version>${ffmpeg.version}</version>
+                    <classifier>linux-x86_64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>javacpp</artifactId>
+                    <version>${javacv.version}</version>
+                    <classifier>linux-x86_64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>dist-linux-arm64</id>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-linux-arm64</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>ffmpeg</artifactId>
+                    <version>${ffmpeg.version}</version>
+                    <classifier>linux-arm64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>javacpp</artifactId>
+                    <version>${javacv.version}</version>
+                    <classifier>linux-arm64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+</project>

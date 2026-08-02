@@ -1,11 +1,11 @@
-package laserphile.chromatik.video;
+package laserphile.chromatik.core;
 
 /**
  * A source of decoded video frames. The seam that lets file playback and (later) live screen
  * capture share one decode/projection pipeline. All methods run on the decode thread, never
  * the LX engine thread, so blocking here is fine.
  */
-interface FrameSource extends AutoCloseable {
+public interface FrameSource extends AutoCloseable {
 
   /** Reported by {@link #durationMs()} when the source has no timeline (a live capture). */
   long DURATION_UNKNOWN = -1;

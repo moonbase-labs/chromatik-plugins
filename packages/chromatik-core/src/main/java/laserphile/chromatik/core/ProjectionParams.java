@@ -1,4 +1,4 @@
-package laserphile.chromatik.video;
+package laserphile.chromatik.core;
 
 /**
  * A per-frame snapshot of the projection controls, computed once on the engine thread so the
@@ -25,7 +25,7 @@ public final class ProjectionParams {
    * opening, or one that failed to, leaves the channel looking the way its own controls say it
    * should rather than forcing black over the top.
    */
-  static int backgroundColor(BackgroundMode backgroundMode) {
+  public static int backgroundColor(BackgroundMode backgroundMode) {
     return backgroundMode == BackgroundMode.CLEAR ? 0x00000000 : 0xff000000;
   }
 

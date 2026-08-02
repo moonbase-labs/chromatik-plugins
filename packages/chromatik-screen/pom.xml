@@ -14,21 +14,14 @@
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
-    <artifactId>chromatik-video</artifactId>
-    <name>Laserphile Video</name>
+    <artifactId>chromatik-screen</artifactId>
+    <name>Laserphile Screen Capture</name>
 
     <!--
-      Both dependencies are `provided`, which is what keeps this jar at a few tens of kilobytes
-      instead of tens of megabytes. Chromatik loads every jar in its Packages folder through one
-      shared class loader, so at runtime these classes come from the installed chromatik-core
-      package; bundling a second copy here would collide with it, class for class.
-
-      No dist-* profiles and no platform suffix: nothing native is bundled, so one jar runs
-      everywhere. The natives live in chromatik-core, which does have a jar per platform.
-
-      Getting either scope wrong is silent. Shade would inline the whole decode stack, the
-      release gate would still pass, and the only symptom would be the jar being a thousand
-      times bigger, which is why CI asserts the size.
+      Same shape as chromatik-video, and for the same reasons: both dependencies are `provided`
+      so this jar carries no copy of the decode stack, and Chromatik's single class loader
+      resolves them from the installed chromatik-core package at runtime. See that pom for the
+      full reasoning.
     -->
     <dependencies>
         <dependency>
@@ -38,7 +31,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- FileVideoSource compiles against FFmpegFrameGrabber; chromatik-core carries it. -->
+        <!-- ScreenCaptureSource compiles against FFmpegFrameGrabber; chromatik-core carries it. -->
         <dependency>
             <groupId>org.bytedeco</groupId>
             <artifactId>javacv</artifactId>

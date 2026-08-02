@@ -1,10 +1,15 @@
-package laserphile.chromatik.video;
+package laserphile.chromatik.screen;
 
 import java.util.Locale;
 
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.Java2DFrameConverter;
+
+import laserphile.chromatik.core.ColorSpaceCorrection;
+import laserphile.chromatik.core.FrameSource;
+import laserphile.chromatik.core.VideoFrame;
+import laserphile.chromatik.core.WorkingResolution;
 
 import heronarts.lx.LX;
 
@@ -63,33 +68,40 @@ final class ScreenCaptureSource implements FrameSource {
     X11GRAB
   }
 
+  /**
+   * The field is only assigned once the device has actually started, so that a capture which
+   * failed to open leaves it null rather than holding a grabber whose native context is null.
+   * The difference matters: the second kind is not null, so it passes any guard and then fails
+   * inside FFmpeg on the next call instead of reporting why the device would not open.
+   */
   @Override
   public void open(int longestEdge) throws Exception {
     final CaptureDevice device = detectCaptureDevice();
 
-    this.grabber = new FFmpegFrameGrabber(inputFor(device));
-    this.grabber.setFormat(formatFor(device));
-    this.grabber.setOption("framerate", String.valueOf(Math.round(this.targetFrameRate)));
-    this.grabber.setOption(cursorOptionFor(device), this.captureCursor ? "1" : "0");
+    final FFmpegFrameGrabber opening = new FFmpegFrameGrabber(inputFor(device));
+    opening.setFormat(formatFor(device));
+    opening.setOption("framerate", String.valueOf(Math.round(this.targetFrameRate)));
+    opening.setOption(cursorOptionFor(device), this.captureCursor ? "1" : "0");
 
     LX.log(String.format(
-      "[LaserphileVideo] opening screen capture via %s (%s). This needs screen recording "
+      "[LaserphileScreen] opening screen capture via %s (%s). This needs screen recording "
         + "permission for Chromatik; if the pattern stays black, grant it and restart Chromatik.",
       formatFor(device), inputFor(device)));
 
-    this.grabber.start();
+    opening.start();
 
     // A Retina desktop runs to about 3000x2000, which is 24 MB of pixels every frame and far more
     // detail than a few thousand LEDs can show, so this matters more here than for a video file.
-    WorkingResolution.applyTo(this.grabber, longestEdge);
+    WorkingResolution.applyTo(opening, longestEdge);
 
     // A capture device usually hands over RGB already, in which case no colour-difference
     // conversion happens and there is nothing to put right. Asking anyway costs one read and
     // covers the devices that do go through a colour-difference format.
-    this.correction = ColorSpaceCorrection.forStream(this.grabber, toString());
+    this.correction = ColorSpaceCorrection.forStream(opening, toString());
+    this.grabber = opening;
 
-    LX.log(String.format("[LaserphileVideo] screen capture open: %dx%d at %.0f fps",
-      this.grabber.getImageWidth(), this.grabber.getImageHeight(), this.targetFrameRate));
+    LX.log(String.format("[LaserphileScreen] screen capture open: %dx%d at %.0f fps",
+      opening.getImageWidth(), opening.getImageHeight(), this.targetFrameRate));
   }
 
   private static CaptureDevice detectCaptureDevice() throws Exception {

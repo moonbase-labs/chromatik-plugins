@@ -4,6 +4,11 @@ import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.Java2DFrameConverter;
 
+import laserphile.chromatik.core.ColorSpaceCorrection;
+import laserphile.chromatik.core.FrameSource;
+import laserphile.chromatik.core.VideoFrame;
+import laserphile.chromatik.core.WorkingResolution;
+
 /**
  * A {@link FrameSource} backed by a video file, decoded with JavaCV/FFmpeg.
  *
@@ -24,14 +29,23 @@ final class FileVideoSource implements FrameSource {
     this.path = path;
   }
 
+  /**
+   * The field is only assigned once the grabber has actually started.
+   *
+   * Assigning it first looks equivalent and is not: a grabber that failed to start is not null,
+   * it is a live object wrapping a null native context, so the guards below would wave it through
+   * and the next call would come back as a null-pointer dereference inside FFmpeg rather than as
+   * the real reason the file could not be opened.
+   */
   @Override
   public void open(int longestEdge) throws Exception {
-    this.grabber = new FFmpegFrameGrabber(this.path);
-    this.grabber.start();
+    final FFmpegFrameGrabber opening = new FFmpegFrameGrabber(this.path);
+    opening.start();
 
-    WorkingResolution.applyTo(this.grabber, longestEdge);
+    WorkingResolution.applyTo(opening, longestEdge);
 
-    this.correction = ColorSpaceCorrection.forStream(this.grabber, this.path);
+    this.correction = ColorSpaceCorrection.forStream(opening, this.path);
+    this.grabber = opening;
   }
 
   // Both of the following are asked immediately after open() succeeds, so the grabber is normally

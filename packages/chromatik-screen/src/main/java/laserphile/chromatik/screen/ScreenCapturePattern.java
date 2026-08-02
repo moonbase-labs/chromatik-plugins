@@ -1,4 +1,10 @@
-package laserphile.chromatik.video;
+package laserphile.chromatik.screen;
+
+import laserphile.chromatik.core.FramePipeline;
+import laserphile.chromatik.core.ProjectionControls;
+import laserphile.chromatik.core.ProjectionParams;
+import laserphile.chromatik.core.VideoFrame;
+import laserphile.chromatik.core.WorkingResolution;
 
 import heronarts.lx.LX;
 import heronarts.lx.LXCategory;
@@ -21,10 +27,39 @@ import heronarts.lx.pattern.LXPattern;
  * application holding it. Without it the capture device opens and then waits forever on a first
  * frame that never comes, so the pattern renders black; {@link #watchForSilentCapture} is what
  * explains that in the log.
+ *
+ * The projection and decode machinery lives in the separate Laserphile Core package, which has to
+ * be installed alongside this one.
  */
 @LXCategory("Laserphile")
 @LXComponent.Name("Screen Capture")
 public class ScreenCapturePattern extends LXPattern {
+
+  /**
+   * Chromatik cannot express a dependency between packages, so nothing stops this one being
+   * installed on its own. Without the core package the first thing to touch it fails with a bare
+   * NoClassDefFoundError naming an internal class, which says nothing about what to do. Checking
+   * here turns that into a sentence.
+   *
+   * A static block runs at class initialisation, which happens when the pattern is first added to
+   * a channel rather than when Chromatik scans the jar, so the pattern still lists normally and
+   * only explains itself when someone reaches for it.
+   */
+  static {
+    requireCorePackage();
+  }
+
+  private static void requireCorePackage() {
+    try {
+      Class.forName("laserphile.chromatik.core.FramePipeline");
+    } catch (ClassNotFoundException missing) {
+      throw new IllegalStateException(
+        "The Laserphile Screen Capture package needs the Laserphile Core package, which is not "
+          + "installed. Install the chromatik-core jar for your platform into ~/Chromatik/Packages "
+          + "and restart Chromatik.",
+        missing);
+    }
+  }
 
   /**
    * How long the capture may produce nothing before the log says so. A device that opens but never
@@ -211,7 +246,7 @@ public class ScreenCapturePattern extends LXPattern {
     this.reportedSilentCapture = true;
 
     LX.log(
-      "[LaserphileVideo] screen capture has produced no frames. Chromatik most likely lacks screen "
+      "[LaserphileScreen] screen capture has produced no frames. Chromatik most likely lacks screen "
         + "recording permission: grant it in System Settings > Privacy & Security > Screen & System "
         + "Audio Recording, then restart Chromatik.");
   }

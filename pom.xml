@@ -20,8 +20,15 @@
 
       See docs/ADDING-A-PLUGIN.md for the recipe.
     -->
+    <!--
+      chromatik-core first: the two plugins compile against it and resolve it from the reactor,
+      so Maven has to build it before them. It also declares the dist-* profiles, which is why
+      the build loop in CI still finds them when run from here.
+    -->
     <modules>
+        <module>packages/chromatik-core</module>
         <module>packages/chromatik-video</module>
+        <module>packages/chromatik-screen</module>
     </modules>
 
     <properties>
