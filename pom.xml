@@ -30,10 +30,12 @@
 
         <lx.version>1.2.1</lx.version>
 
-        <!-- Decode stack, used by plugins that bundle it. native.classifier will become per-OS build profiles later. -->
+        <!--
+          Decode stack, used by plugins that bundle it. The platform natives are chosen by the
+          dist-* profiles in each such module, which is where one jar per OS/arch comes from.
+        -->
         <javacv.version>1.5.11</javacv.version>
         <ffmpeg.version>7.1-1.5.11</ffmpeg.version>
-        <native.classifier>macosx-arm64</native.classifier>
 
         <maven-compiler-plugin.version>3.8.0</maven-compiler-plugin.version>
         <maven-resources-plugin.version>3.3.1</maven-resources-plugin.version>
@@ -71,13 +73,17 @@
     </dependencies>
 
     <!--
-      JavaCV/FFmpeg is managed, not inherited. Versions and native classifiers are pinned
-      here so every module that decodes agrees on them, but only modules that actually
-      declare these dependencies pay the ~23 MB of bundled natives. A plugin that does no
-      decoding should not carry FFmpeg.
+      JavaCV is managed, not inherited: the version is pinned here so every module that decodes
+      agrees on it, but only modules that declare the dependency pay for it. A plugin that does
+      no decoding should not carry FFmpeg.
 
-      Only the ffmpeg + javacpp native for this machine's platform is pulled (not the
-      all-OS *-platform aggregators). Default ffmpeg build is LGPL.
+      The platform-specific ffmpeg and javacpp natives are NOT managed here, because a module's
+      dist-* profile declares a different classifier per build and the Mac profile declares two
+      at once. Those profiles read ${ffmpeg.version} and ${javacv.version} above, so versions
+      still live in exactly one place.
+
+      Only the natives for the target platform are pulled, never the all-OS *-platform
+      aggregators. The default ffmpeg build is LGPL; the -gpl classifier variants are full GPL.
     -->
     <dependencyManagement>
         <dependencies>
@@ -85,18 +91,6 @@
                 <groupId>org.bytedeco</groupId>
                 <artifactId>javacv</artifactId>
                 <version>${javacv.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.bytedeco</groupId>
-                <artifactId>ffmpeg</artifactId>
-                <version>${ffmpeg.version}</version>
-                <classifier>${native.classifier}</classifier>
-            </dependency>
-            <dependency>
-                <groupId>org.bytedeco</groupId>
-                <artifactId>javacpp</artifactId>
-                <version>${javacv.version}</version>
-                <classifier>${native.classifier}</classifier>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -207,9 +201,15 @@
                                 <configuration>
                                     <outputDirectory>${user.home}/Chromatik/Packages</outputDirectory>
                                     <resources>
+                                        <!--
+                                          finalName rather than artifactId-version, so this also
+                                          picks up the platform-suffixed jars a dist-* profile
+                                          produces. It defaults to artifactId-version for a module
+                                          that sets no finalName of its own.
+                                        -->
                                         <resource>
                                             <directory>${project.build.directory}</directory>
-                                            <include>${project.artifactId}-${project.version}.jar</include>
+                                            <include>${project.build.finalName}.jar</include>
                                             <filtering>false</filtering>
                                         </resource>
                                     </resources>

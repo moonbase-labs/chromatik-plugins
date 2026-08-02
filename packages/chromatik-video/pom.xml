@@ -20,23 +20,134 @@
     <!--
       Everything else is inherited: the provided LX dependencies, compiler settings,
       lx.package filtering, the shade config, and the install profile all live in the
-      root pom. Versions and native classifiers for these three come from its
-      dependencyManagement. They are compile scope, so shade packs them into the jar.
+      root pom. javacv is platform-independent and its version comes from the root's
+      dependencyManagement. It is compile scope, so shade packs it into the jar.
+
+      The platform natives that go with it are declared per dist-* profile below.
     -->
     <dependencies>
         <dependency>
             <groupId>org.bytedeco</groupId>
             <artifactId>javacv</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.bytedeco</groupId>
-            <artifactId>ffmpeg</artifactId>
-            <classifier>${native.classifier}</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.bytedeco</groupId>
-            <artifactId>javacpp</artifactId>
-            <classifier>${native.classifier}</classifier>
-        </dependency>
     </dependencies>
+
+    <!--
+      One profile per distributable jar. Each picks the FFmpeg and JavaCPP natives for its
+      target and names the jar after it, so a release asset says on the tin which machines
+      it runs on. Chromatik loads whichever jar the user installed; JavaCPP then picks the
+      matching native out of it at runtime by inspecting the current platform.
+
+      Building for a platform is `mvn package -Pdist-<name>`.
+
+      dist-macos is the default so a plain `mvn package` here produces exactly the jar Mac
+      users download, rather than a dev-only variant nobody else ever runs. Maven turns an
+      activeByDefault profile off as soon as another profile IN THE SAME POM is selected, so
+      `-Pdist-windows` swaps cleanly. The root pom's `install` profile lives in a different
+      pom and so leaves this alone, which is what makes `mvn -Pinstall install` still work.
+
+      It carries both Mac architectures on purpose. Splitting them would save ~23 MB per
+      download at the cost of making every Mac user identify their own CPU first, and
+      getting it wrong surfaces as a native-load stack trace rather than a clear message.
+    -->
+    <profiles>
+        <profile>
+            <id>dist-macos</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-macos</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>ffmpeg</artifactId>
+                    <version>${ffmpeg.version}</version>
+                    <classifier>macosx-arm64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>javacpp</artifactId>
+                    <version>${javacv.version}</version>
+                    <classifier>macosx-arm64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>ffmpeg</artifactId>
+                    <version>${ffmpeg.version}</version>
+                    <classifier>macosx-x86_64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>javacpp</artifactId>
+                    <version>${javacv.version}</version>
+                    <classifier>macosx-x86_64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>dist-windows</id>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-windows</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>ffmpeg</artifactId>
+                    <version>${ffmpeg.version}</version>
+                    <classifier>windows-x86_64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>javacpp</artifactId>
+                    <version>${javacv.version}</version>
+                    <classifier>windows-x86_64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>dist-linux-x86_64</id>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-linux-x86_64</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>ffmpeg</artifactId>
+                    <version>${ffmpeg.version}</version>
+                    <classifier>linux-x86_64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>javacpp</artifactId>
+                    <version>${javacv.version}</version>
+                    <classifier>linux-x86_64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>dist-linux-arm64</id>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-linux-arm64</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>ffmpeg</artifactId>
+                    <version>${ffmpeg.version}</version>
+                    <classifier>linux-arm64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>javacpp</artifactId>
+                    <version>${javacv.version}</version>
+                    <classifier>linux-arm64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
 </project>
