@@ -99,6 +99,20 @@ jobs:
             fi
           done
 
+      # chromatik-mcp ships no native, so nothing about it varies by platform and it has no place
+      # in the verify matrix. What it does need is a check that the wire format still matches both
+      # protocol eras, and that the jar is still only its own classes: gson is provided because
+      # Chromatik already has it, and a scope slip would push someone else's classes into the class
+      # loader every installed package shares. The gate needs the provided dependencies supplied,
+      # exactly as Chromatik supplies them at runtime.
+      - name: MCP jar shape and protocol
+        run: |
+          mvn -B -q -pl :chromatik-mcp dependency:build-classpath \
+            -Dmdep.outputFile=target/provided.txt -Dmdep.includeScope=provided
+          jar=$(ls dist/chromatik-mcp-*.jar)
+          java -cp "$jar:$(cat packages/chromatik-mcp/target/provided.txt)" \
+            ci/McpProtocolCheck.java "$jar"
+
       - uses: actions/upload-artifact@v7
         with:
           name: jars

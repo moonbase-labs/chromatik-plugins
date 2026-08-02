@@ -66,7 +66,7 @@ The nearest existing thing to reuse is the built-in `heronarts.lx.pattern.image.
 - **Mapping**: general-purpose projection. Reuse an `ImagePattern`-style UV projection so it works on any model; a flat 2D wall is just the special case where `zn` is constant.
 - **v1 scope**: MVP **plus transport controls** (play/pause, loop, speed, seek/scrub). Live **screen capture** is a desired near-term source; design the abstraction for it now, implement it in a later milestone (M4).
 - **Decode library**: undecided. M0 is a **spike** comparing JavaCV/FFmpeg vs JCodec on the user's real footage and hardware, then commits.
-- **UI**: auto-generated parameter panel only. Ship a plain `LXPattern` and let Chromatik build the control panel from its `LXParameter`s. This avoids the `LXStudio.Plugin` path, which `canRunPlugins()` gates behind a Pro License. Note that a **custom device UI is not itself Pro-gated**: a pattern implementing `UIDeviceControls` is picked up directly, ahead of the plugin registry. We stay on the auto panel because it is less code, not because the alternative is barred.
+- **UI**: auto-generated parameter panel only. Ship a plain `LXPattern` and let Chromatik build the control panel from its `LXParameter`s. This is a choice about how much code to write, not a licensing constraint. `canRunPlugins()` returns true on every tier except having no licence at all, so FREE runs `LXPlugin`, `LXStudio.Plugin` and custom device UIs alike; `chromatik-mcp` is an `LXPlugin` and runs here. A custom device UI does not even reach that check, since `LXStudio$UI.instantiateDeviceControls` matches `instanceof UIDeviceControls` ahead of the plugin registry. Only the point caps are tiered: FREE holds network output to 1,000 points.
 
 ## Architecture overview
 
