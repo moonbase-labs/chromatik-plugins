@@ -36,7 +36,8 @@ The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` p
 ## ✨ Features
 
 - **Model-agnostic projection.** Works on any `LXModel`: domes, sculptures, strips, matrices. Nothing assumes a grid.
-- **Never blocks the engine.** All decode, colour conversion, and downscaling happen off the LX engine thread. `run()` does a lock-free read and a tight per-point loop.
+- **Never blocks the engine.** All decode and colour conversion happen off the LX engine thread. `run()` does a lock-free read and a tight per-point loop.
+- **Full transport.** Play/pause, loop, 0.1x to 4x speed, and a two-way position slider you can scrub. Looping is gapless and scrubbing coalesces, so a fast drag doesn't queue up a hundred seeks.
 - **Full projection control.** Yaw, pitch, roll, translate on three axes, scale, per-axis stretch, and scroll.
 - **Four wrap modes.** `CLAMP`, `CLIP`, `TILE`, `MIRROR`, matching the vocabulary of the built-in `ImagePattern`.
 - **Transparent background.** `CLEAR` lets lower LX layers show through where the image doesn't reach.
@@ -111,6 +112,12 @@ Chromatik generates the panel from these automatically.
 | Parameter | Type | Default | Range | Description |
 |---|---|---|---|---|
 | `File` | String | `LaserphileVideo/steamed-hams.mp4` | | Absolute path, or relative to `~/Chromatik` |
+| `Reload` | Trigger | | | Re-open the file |
+| `Play` | Boolean | `on` | | Run the playhead |
+| `Loop` | Boolean | `on` | | Start again on reaching the end |
+| `Speed` | Compound | `1` | 0.1 to 4 | Playback rate. Affects the playhead only, never the decode rate |
+| `Position` | Compound | `0` | 0 to 1 | Playhead. Follows playback, and seeks when you drag it |
+| `Restart` | Trigger | | | Jump back to the start and play |
 | `Yaw` | Compound | `0` | -180 to 180 | Rotation about the vertical axis |
 | `Pitch` | Compound | `0` | -180 to 180 | Rotation about the horizontal axis |
 | `Roll` | Compound | `0` | -180 to 180 | Rotation about the view axis |
@@ -121,6 +128,7 @@ Chromatik generates the panel from these automatically.
 | `Wrap` | Enum | `CLAMP` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
 | `Background` | Enum | `BLACK` | `BLACK` `CLEAR` | Colour for points rejected by `CLIP` |
 | `Interp` | Enum | `BILINEAR` | `NEAREST` `BILINEAR` | `NEAREST` is blocky, `BILINEAR` is smoother |
+| `Level` | Compound | `1` | 0 to 1 | Master brightness |
 
 Every `Compound` parameter is modulatable, so any of them can be driven by an LFO, an envelope, or MIDI.
 
@@ -133,32 +141,39 @@ flowchart LR
     subgraph decode["🎞️ Decode thread (blocking is fine)"]
         direction TB
         SRC["FileVideoSource<br/><i>FFmpeg via JavaCV</i>"]
-        FRM["VideoFrame<br/><i>downscaled RGB</i>"]
+        FRM["VideoFrame<br/><i>ARGB + stream time</i>"]
         SRC --> FRM
     end
 
-    HOLD[("FramePipeline<br/>AtomicReference")]
+    RING[("FramePipeline<br/>bounded ring, 8 frames")]
+    BOX[["Mailbox<br/><i>seek · loop</i>"]]
 
     subgraph engine["⚡ LX engine thread (must never block)"]
         direction TB
         RUN["VideoPattern.run(deltaMs)"]
+        CLK["PlaybackClock<br/><i>playhead</i>"]
         PRJ["Projector<br/><i>UV projection + sampling</i>"]
         COL["colors[point.index]"]
-        RUN --> PRJ --> COL
+        RUN --> CLK --> PRJ --> COL
     end
 
-    FRM -- publish --> HOLD
-    HOLD -. "non-blocking read" .-> RUN
+    FRM -- "publish (blocks when full)" --> RING
+    RING -. "frameFor(streamTime)" .-> RUN
+    RUN -- "transport" --> BOX
+    BOX -. "serviced between frames" .-> SRC
     COL --> OUT(["LX output<br/>OPC / Art-Net / sACN"])
 
     style decode fill:#1e1b4b,stroke:#6366f1,color:#e0e7ff
     style engine fill:#422006,stroke:#eab308,color:#fef3c7
-    style HOLD fill:#064e3b,stroke:#10b981,color:#d1fae5
+    style RING fill:#064e3b,stroke:#10b981,color:#d1fae5
+    style BOX fill:#3b0764,stroke:#a855f7,color:#f3e8ff
 ```
 
-The decode thread owns the FFmpeg grabber and publishes finished frames into a single-slot `AtomicReference`. The engine thread reads whatever is there and projects it. If decode falls behind, the engine re-projects the frame it already has rather than stalling the render.
+The decode thread owns the FFmpeg grabber and pushes finished frames into a small bounded ring. The engine picks the newest frame that's due at the current playhead and leaves the rest. A full ring is the only brake on decoding, which makes back-pressure fall out for free: pausing or playing below 1x stalls the decode thread on the ring, and playing above 1x drains it so decode runs flat out to keep up. If decode still can't keep up, the engine re-projects the newest frame it has and the playhead carries on, so media time stays honest and frames are dropped instead.
 
-Frames are downscaled on the decode thread before they're published. LED counts are in the hundreds or thousands, so sampling a few thousand points out of a 4K frame is wasted work: a small hot buffer is both faster and kinder to the cache.
+Control flows the other way through a mailbox the decode thread reads between frames. Seeks coalesce to the newest target and carry a generation number, so a fast scrub never flashes footage from a position you've already dragged past. Looping happens entirely on the decode thread, so the seam is gapless: it stamps every frame with a timeline that keeps climbing straight through the loop point, which is the same timeline the playhead runs on.
+
+Frames are currently decoded at their native resolution. Downscaling them on the decode thread is [M5](#-roadmap): LED counts are in the hundreds or thousands, so sampling a few thousand points out of a 4K frame is wasted work, and a small hot buffer is both faster and kinder to the cache.
 
 <details>
 <summary><b>The projection maths</b></summary>
@@ -186,11 +201,12 @@ This is re-implemented from the documented behaviour of Chromatik's `ImagePatter
 
 | File | Thread | Role |
 |---|---|---|
-| `VideoPattern.java` | engine | Orchestrator. Owns the parameters, drives the pipeline and projector. The only public, auto-discovered class. |
+| `VideoPattern.java` | engine | Orchestrator. Owns the parameters, drives the clock, pipeline, and projector. The only public, auto-discovered class. |
 | `FrameSource.java` | decode | Interface. The seam that lets screen capture drop in later without touching projection. |
-| `FileVideoSource.java` | decode | Wraps `FFmpegFrameGrabber`. Video track only, so the audio is never decoded. |
-| `FramePipeline.java` | both | Owns the decode thread and the frame hand-off. Idempotent start/stop with a bounded join. |
-| `VideoFrame.java` | both | An immutable decoded frame. |
+| `FileVideoSource.java` | decode | Wraps `FFmpegFrameGrabber`. Video track only, so the audio is never decoded or seeked. |
+| `FramePipeline.java` | both | Owns the decode thread, the frame ring, and the control mailbox. Idempotent start/stop with a bounded join. |
+| `PlaybackClock.java` | engine | The playhead. Pure state: play, speed, and the pending seek target, no I/O. |
+| `VideoFrame.java` | both | A decoded frame plus its place on the timeline. |
 | `Projector.java` | engine | The per-point UV projection and sampling loop. |
 | `ProjectionParams.java` | engine | Per-frame snapshot of the controls, with the rotation matrix precomputed. |
 
@@ -201,9 +217,9 @@ This is re-implemented from the documented behaviour of Chromatik's `ImagePatter
 - [x] **M0** Decode spike. Benchmarked JavaCV/FFmpeg on real footage: ~4,450 fps at 384×216, against the ~60 needed.
 - [x] **M1** Skeleton. Package loads in-app, decode thread runs, engine stays non-blocking.
 - [x] **M2** Projection MVP. Full UV projection, all four wrap modes, both background modes, nearest and bilinear.
-- [ ] **M3** Transport. Playback clock, play/pause, loop, speed, seek and scrub, ring buffer with back-pressure and a real drop policy.
+- [x] **M3** Transport. Playback clock, play/pause, loop, speed, seek and scrub, ring buffer with back-pressure and a real drop policy.
 - [ ] **M4** Screen capture. A live `ScreenCaptureSource` behind the existing `FrameSource` seam.
-- [ ] **M5** Polish. BT.709 colour-space correction, gamma and level, frame pooling, per-OS build profiles, a slimmer uber-jar.
+- [ ] **M5** Polish. BT.709 colour-space correction, gamma, working-resolution downscale, frame pooling, per-OS build profiles, a slimmer uber-jar.
 
 Design decisions, open questions, and per-milestone detail live in [`docs/`](docs/): [`PLAN.md`](docs/PLAN.md) is the source of truth, [`PROGRESS.md`](docs/PROGRESS.md) tracks state and carries the decisions log.
 

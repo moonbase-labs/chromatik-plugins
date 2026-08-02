@@ -4,8 +4,8 @@
 
 ## Current status
 
-- **Current milestone:** M2 DONE and confirmed in-app (full projection: rotate/scale/stretch/scroll, wrap CLAMP/CLIP/TILE/MIRROR, background BLACK/CLEAR, nearest/bilinear). Next: M3 transport (play/pause/loop/speed/seek), which replaces the crude sleep-pacing with a real playback clock + ring buffer.
-- **Last updated:** 2026-07-19 (M2 complete).
+- **Current milestone:** M3 code complete and verified headlessly (play/pause, loop, speed, seek/scrub, restart, `level`); the sleep-pacing is gone, replaced by a playback clock + bounded ring with back-pressure. **Awaiting the in-app pass:** the jar is installed in `~/Chromatik/Packages`, so drive each transport control in the panel and watch the frame-rate meter while scrubbing. Next after that: M4 screen capture.
+- **Last updated:** 2026-08-02 (M3 built and headless-verified).
 
 ## Milestone tracker
 
@@ -15,7 +15,7 @@
 | M0 Decode spike | done | JavaCV chosen. Native FFmpeg loads on arm64; ~4,450 fps decode @384x216 (vs ~60 needed); per-pixel RGB works. Spike harness in scratchpad. |
 | M1 Skeleton | done | Native load confirmed in-app; decode thread + latest-frame pipeline + non-blocking run() working (no decode errors in log). Test video staged at `~/Chromatik/LaserphileVideo/steamed-hams.mp4`. |
 | M2 Projection MVP | done | Full projection confirmed in-app: yaw/pitch/roll, translateX/Y/Z, scale, stretchX/Y, scrollX/Y, wrap (CLAMP/CLIP/TILE/MIRROR), background (BLACK/CLEAR), nearest/bilinear. Deferred to later: scaleX/scaleY + stretchAspect (redundant for now), master level/gamma. |
-| M3 Transport | not started | |
+| M3 Transport | in progress | Code complete: `PlaybackClock`, bounded ring + back-pressure, coalesced seeks, gapless loop, two-way `position`, `level`. Headless harness passes all 8 checks. In-app pass outstanding. |
 | M4 Screen capture | not started | |
 | M5 Polish | not started | Includes: trim the uber-jar. JavaCV's optional integration classes (JavaFX/JOGL converters, JavaCPP BuildMojo) cause benign `NoClassDefFoundError` noise during Chromatik's package class-scan; exclude them via shade filters / dependency exclusions. |
 
@@ -33,6 +33,9 @@ Record each decision with a date and one-line rationale.
 - 2026-07-19: File input via a `StringParameter` text box (typed/pasted path) + `reload` trigger. A native file-browse button is deferred: it needs a custom device UI (the plugin path / Pro License), which the auto-panel decision rules out for now. Revisit after M5 if the typed-path UX is annoying.
 - 2026-07-19: Decode library = **JavaCV/FFmpeg** (`org.bytedeco` 1.5.11 / ffmpeg 7.1-1.5.11). Rationale: screen capture is wanted (JCodec can't), and the spike showed native load + huge decode headroom (~4,450 fps @384x216) + working per-pixel RGB. JCodec not benchmarked (screen-capture requirement already decided it).
 - 2026-07-19 (gotcha): `EnumParameter` reflects on the enum's `values()` across packages, so any enum used with it (and its enclosing class if nested) MUST be `public`. A package-private enum compiles fine but throws `IllegalAccessException` at pattern instantiation. `ProjectionParams` + its enums are public for this reason.
+- 2026-08-02 (M3): playback time is a **continuous stream timeline**, not a wrapping media clock. The decode thread loops gaplessly and re-anchors its offset each rewind, stamping every frame with a `streamTimeMs` that climbs straight through the loop seam; the engine clock is a plain accumulator over the same timeline. Rationale: a wrapping clock and a gapless decode-side loop cannot both be the authority on where the seam is. Raw pts stays on the frame as `mediaTimeMs` and drives the `position` readout.
+- 2026-08-02 (M3): the control mailbox is an `AtomicReference<SeekRequest>` (newest wins) plus volatiles, not a queue. Seeks are the only message that needs one, and they must coalesce; pause and speed are pure clock state and throttle decode through the ring's back-pressure instead.
+- 2026-08-02 (M3 gotcha): LX parameter listeners can fire on the UI thread, so they only raise volatile flags and `run()` acts on them. All clock/pipeline mutation stays on the engine thread. This also closed a latent M1/M2 race where editing `fileName` restarted the decode thread from the UI thread.
 - 2026-07-19 (M0 findings to carry): (a) first `FFmpegFrameGrabber.start()` per JVM costs ~6.3 s of native extraction, then ~2 ms, do it on the decode thread / consider pre-warming; (b) swscale logs "no accelerated yuv420p->bgr24", benign, but flags the BT.709 colour-space work for M5; (c) use `grabImage()` (video only) so the audio track is never decoded.
 
 ## Environment / versions
