@@ -1,7 +1,10 @@
 package laserphile.chromatik.video;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
+import heronarts.glx.GLX;
 import heronarts.lx.LX;
 import heronarts.lx.LXCategory;
 import heronarts.lx.LXComponent;
@@ -31,11 +34,16 @@ public class VideoPattern extends LXPattern {
    */
   private static final double QUARTER_SECOND_IN_MS = 250;
 
+  /** Offered by the file chooser. FFmpeg reads far more; these are the containers worth listing. */
+  private static final String[] VIDEO_EXTENSIONS = { "mp4", "mov", "m4v", "avi", "mkv", "webm" };
+
   private final LX lx;
 
   public final StringParameter fileName =
     new StringParameter("File", "LaserphileVideo/steamed-hams.mp4")
       .setDescription("Video file: an absolute path, or a path relative to ~/Chromatik");
+  public final TriggerParameter browse =
+    new TriggerParameter("Browse").setDescription("Pick a video file");
   public final TriggerParameter reload =
     new TriggerParameter("Reload").setDescription("Re-open the video file");
 
@@ -109,6 +117,7 @@ public class VideoPattern extends LXPattern {
     this.lx = lx;
 
     addParameter("file", this.fileName);
+    addParameter("browse", this.browse);
     addParameter("reload", this.reload);
     addParameter("play", this.play);
     addParameter("loop", this.loop);
@@ -132,6 +141,7 @@ public class VideoPattern extends LXPattern {
     addParameter("level", this.level);
 
     this.fileName.addListener(parameter -> this.openRequested = true);
+    this.browse.onTrigger(this::showFileChooser);
     this.reload.onTrigger(() -> this.openRequested = true);
     this.restart.onTrigger(() -> this.restartRequested = true);
 
@@ -150,6 +160,68 @@ public class VideoPattern extends LXPattern {
     if (resolved != null) {
       this.pipeline.start(resolved);
     }
+  }
+
+  /**
+   * Open the desktop file chooser.
+   *
+   * The dialog belongs to GLX, the windowed build of LX, and GLX extends LX, so the same object
+   * the pattern was handed at construction is the one that can show it. Under a plain headless
+   * LX there is no window and no dialog, hence the check.
+   */
+  private void showFileChooser() {
+    if (!(this.lx instanceof GLX glx)) {
+      LX.log("[LaserphileVideo] the file chooser needs the Chromatik desktop app");
+      return;
+    }
+
+    glx.showOpenFileDialog(
+      "Open Video",
+      "Video File",
+      VIDEO_EXTENSIONS,
+      chooserStartPath(),
+      this::onFileChosen);
+  }
+
+  /** Start the chooser at the current video, falling back to the Chromatik media folder. */
+  private String chooserStartPath() {
+    final String resolved = resolvePath(this.fileName.getString());
+
+    if (resolved != null && new File(resolved).exists()) {
+      return resolved;
+    }
+
+    return this.lx.getMediaPath();
+  }
+
+  private void onFileChosen(String chosenPath) {
+    if (chosenPath == null || chosenPath.isBlank()) {
+      return; // the user cancelled
+    }
+
+    this.fileName.setValue(relativizeToMediaFolder(chosenPath));
+  }
+
+  /**
+   * Store a path under ~/Chromatik as a relative one, so a project shared with someone else
+   * still finds the video next to their own Chromatik folder. Anything outside stays absolute,
+   * because there is nothing portable to say about it.
+   */
+  private String relativizeToMediaFolder(String chosenPath) {
+    final String mediaPath = this.lx.getMediaPath();
+
+    if (mediaPath == null || mediaPath.isBlank()) {
+      return chosenPath;
+    }
+
+    final Path mediaFolder = Paths.get(mediaPath).toAbsolutePath().normalize();
+    final Path chosen = Paths.get(chosenPath).toAbsolutePath().normalize();
+
+    if (!chosen.startsWith(mediaFolder)) {
+      return chosenPath;
+    }
+
+    return mediaFolder.relativize(chosen).toString();
   }
 
   /** Absolute paths are used as-is; relative paths resolve under ~/Chromatik for portability. */
