@@ -11,18 +11,22 @@ import heronarts.lx.LXComponent;
 import heronarts.lx.color.LXColor;
 import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.CompoundParameter;
+import heronarts.lx.parameter.DiscreteParameter;
 import heronarts.lx.parameter.EnumParameter;
 import heronarts.lx.parameter.StringParameter;
 import heronarts.lx.parameter.TriggerParameter;
 import heronarts.lx.pattern.LXPattern;
 
 /**
- * Plays a video file onto the LX model with an ImagePattern-style projection.
+ * Plays a video file, or the live desktop, onto the LX model with an ImagePattern-style projection.
  *
  * A background thread decodes frames into a buffer; run() advances the playhead, picks the
  * frame due now, and projects it onto every point. Transport (play/pause, loop, speed, seek,
  * restart) drives the playhead on this thread and reaches the decoder through the pipeline's
  * mailbox, so nothing here blocks on decode or I/O.
+ *
+ * With Source set to Screen there is no timeline to drive, so the transport controls do nothing.
+ * They stay on the panel regardless, because the auto-generated panel offers no way to hide them.
  */
 @LXCategory("Laserphile")
 @LXComponent.Name("Video")
@@ -38,6 +42,13 @@ public class VideoPattern extends LXPattern {
   private static final String[] VIDEO_EXTENSIONS = { "mp4", "mov", "m4v", "avi", "mkv", "webm" };
 
   /**
+   * How long a live source may produce nothing before the log says so. Screen capture that opens
+   * but never delivers a frame is what a missing screen-recording permission looks like from here,
+   * and with no custom UI the log is the only place that can explain a black pattern.
+   */
+  private static final double FIVE_SECONDS_IN_MS = 5000;
+
+  /**
    * Folder the last browse landed in. Shared by every Video pattern and kept for the run of the
    * app, so a freshly added pattern opens the chooser where the previous one finished instead of
    * back at the media folder. Written from the dialog callback, read when the next dialog opens.
@@ -45,6 +56,10 @@ public class VideoPattern extends LXPattern {
   private static volatile String lastBrowsedFolder = null;
 
   private final LX lx;
+
+  public final EnumParameter<SourceType> sourceType =
+    new EnumParameter<SourceType>("Source", SourceType.FILE)
+      .setDescription("Play a video file, or capture the live desktop");
 
   // Empty until the user picks something. A default pointing at a specific clip would be a
   // file-not-found for everyone who does not happen to have that clip.
@@ -54,7 +69,16 @@ public class VideoPattern extends LXPattern {
   public final TriggerParameter browse =
     new TriggerParameter("Browse").setDescription("Pick a video file");
   public final TriggerParameter reload =
-    new TriggerParameter("Reload").setDescription("Re-open the video file");
+    new TriggerParameter("Reload").setDescription("Re-open the current source");
+
+  // Which display to grab, for a machine with more than one. Only macOS and Linux can pick: the
+  // Windows capture device covers the whole virtual desktop and has no per-display index.
+  public final DiscreteParameter screen =
+    new DiscreteParameter("Screen", 0, 0, 4)
+      .setDescription("Which display to capture (Screen source; ignored on Windows)");
+  public final DiscreteParameter captureFrameRate =
+    new DiscreteParameter("CapFps", 30, 5, 61)
+      .setDescription("Frames per second to capture the desktop at (Screen source)");
 
   public final BooleanParameter play =
     new BooleanParameter("Play", true).setDescription("Run the playhead");
@@ -121,13 +145,21 @@ public class VideoPattern extends LXPattern {
   private boolean updatingPosition = false;
   private double msSinceUserPositionEdit = QUARTER_SECOND_IN_MS;
 
+  // How long the current live source has gone without producing a frame, and whether that has
+  // already been reported, so a wedged capture says so once rather than every render.
+  private double msSinceLiveSourceOpened = 0;
+  private boolean reportedSilentLiveSource = false;
+
   public VideoPattern(LX lx) {
     super(lx);
     this.lx = lx;
 
+    addParameter("source", this.sourceType);
     addParameter("file", this.fileName);
     addParameter("browse", this.browse);
     addParameter("reload", this.reload);
+    addParameter("screen", this.screen);
+    addParameter("captureFrameRate", this.captureFrameRate);
     addParameter("play", this.play);
     addParameter("loop", this.loop);
     addParameter("speed", this.speed);
@@ -175,9 +207,16 @@ public class VideoPattern extends LXPattern {
       this.loop,
       this.restart);
     // Browse and Reload stay out of the list: both open or re-read a file from disk, which is not
-    // something to hand to a control surface.
+    // something to hand to a control surface. Source, Screen and CapFps stay out for the same
+    // reason, more so: each one tears down the current source and opens another, and a screen
+    // device can take seconds to open, so a swept knob would thrash it.
 
+    // Everything that decides what gets opened reopens the source. The capture settings are
+    // fixed at device-open time, so changing one has to go back through the same path.
+    this.sourceType.addListener(parameter -> this.openRequested = true);
     this.fileName.addListener(parameter -> this.openRequested = true);
+    this.screen.addListener(parameter -> this.openRequested = true);
+    this.captureFrameRate.addListener(parameter -> this.openRequested = true);
     this.browse.onTrigger(this::showFileChooser);
     this.reload.onTrigger(() -> this.openRequested = true);
     this.restart.onTrigger(() -> this.restartRequested = true);
@@ -189,17 +228,36 @@ public class VideoPattern extends LXPattern {
     });
   }
 
-  private void openCurrentFile() {
+  private void openCurrentSource() {
     this.pipeline.stop();
     this.clock.reset();
 
-    final String resolved = resolvePath(this.fileName.getString());
-    if (resolved == null) {
-      LX.log("[LaserphileVideo] no video selected: use Browse, or type a path into File");
-      return;
+    this.msSinceLiveSourceOpened = 0;
+    this.reportedSilentLiveSource = false;
+
+    final FrameSource source = switch (this.sourceType.getEnum()) {
+      case FILE -> fileSource();
+      case SCREEN ->
+        new ScreenCaptureSource(this.screen.getValuei(), this.captureFrameRate.getValuei());
+    };
+
+    if (source == null) {
+      return; // nothing to open, and fileSource() has already said why
     }
 
-    this.pipeline.start(resolved);
+    this.pipeline.start(source);
+  }
+
+  /** The chosen file as a source, or null when no file has been chosen yet. */
+  private FrameSource fileSource() {
+    final String resolved = resolvePath(this.fileName.getString());
+
+    if (resolved == null) {
+      LX.log("[LaserphileVideo] no video selected: use Browse, or type a path into File");
+      return null;
+    }
+
+    return new FileVideoSource(resolved);
   }
 
   /**
@@ -312,7 +370,7 @@ public class VideoPattern extends LXPattern {
   @Override
   protected void onActive() {
     this.openRequested = false;
-    openCurrentFile();
+    openCurrentSource();
   }
 
   @Override
@@ -367,7 +425,15 @@ public class VideoPattern extends LXPattern {
   private void serviceTransport(double deltaMs) {
     if (this.openRequested) {
       this.openRequested = false;
-      openCurrentFile();
+      openCurrentSource();
+    }
+
+    if (this.sourceType.getEnum() == SourceType.SCREEN) {
+      // Live capture has no timeline, so there is no playhead to advance and nothing for the
+      // transport controls to move. The clock is left where it is and the pipeline hands back
+      // whatever was captured most recently.
+      watchForSilentLiveSource(deltaMs);
+      return;
     }
 
     this.pipeline.setLooping(this.loop.isOn());
@@ -401,6 +467,32 @@ public class VideoPattern extends LXPattern {
     if (this.pipeline.isDrained()) {
       this.play.setValue(false); // ran off the end with looping off; Restart picks it up again
     }
+  }
+
+  /**
+   * Say something, once, if a live source has been open a while and has still produced nothing.
+   *
+   * That is the shape a refused screen-recording permission takes: the capture device opens, then
+   * waits on a first frame the OS never sends, and the pattern renders black with no other clue as
+   * to why. FFmpeg cannot be made to give up on that wait, so the log line is the whole remedy.
+   */
+  private void watchForSilentLiveSource(double deltaMs) {
+    if (this.reportedSilentLiveSource || this.pipeline.hasPublishedFrame()) {
+      return;
+    }
+
+    this.msSinceLiveSourceOpened += deltaMs;
+
+    if (this.msSinceLiveSourceOpened < FIVE_SECONDS_IN_MS) {
+      return;
+    }
+
+    this.reportedSilentLiveSource = true;
+
+    LX.log(
+      "[LaserphileVideo] screen capture has produced no frames. Chromatik most likely lacks screen "
+        + "recording permission: grant it in System Settings > Privacy & Security > Screen & System "
+        + "Audio Recording, then restart Chromatik.");
   }
 
   /** Push the playhead back to the slider, unless the user is the one moving it. */
