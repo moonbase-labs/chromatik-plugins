@@ -12,8 +12,12 @@ target/
 # macOS
 .DS_Store
 
-# Claude Code local settings (machine-specific)
+# Claude Code local settings (machine-specific). .claude/settings.json is shared
+# and checked in; anything with a machine path or a personal preference goes here.
 .claude/settings.local.json
+
+# Scratch git worktrees created by Claude Code sessions
+.claude/worktrees/
 
 # Java
 *.class
