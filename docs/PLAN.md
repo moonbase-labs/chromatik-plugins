@@ -66,7 +66,7 @@ The nearest existing thing to reuse is the built-in `heronarts.lx.pattern.image.
 - **Mapping**: general-purpose projection. Reuse an `ImagePattern`-style UV projection so it works on any model; a flat 2D wall is just the special case where `zn` is constant.
 - **v1 scope**: MVP **plus transport controls** (play/pause, loop, speed, seek/scrub). Live **screen capture** is a desired near-term source; design the abstraction for it now, implement it in a later milestone (M4).
 - **Decode library**: undecided. M0 is a **spike** comparing JavaCV/FFmpeg vs JCodec on the user's real footage and hardware, then commits.
-- **UI**: auto-generated parameter panel only. Ship a plain `LXPattern` and let Chromatik build the control panel from its `LXParameter`s. This deliberately avoids the `LXStudio.Plugin` + `UIDeviceControls` path, which requires a Pro License and an app restart on change.
+- **UI**: auto-generated parameter panel only. Ship a plain `LXPattern` and let Chromatik build the control panel from its `LXParameter`s. This avoids the `LXStudio.Plugin` path, which `canRunPlugins()` gates behind a Pro License. Note that a **custom device UI is not itself Pro-gated**: a pattern implementing `UIDeviceControls` is picked up directly, ahead of the plugin registry. We stay on the auto panel because it is less code, not because the alternative is barred.
 
 ## Architecture overview
 
@@ -124,7 +124,12 @@ All standard `LXParameter`s so Chromatik renders the panel with no custom UI. Tr
 - **Sampling / colour**: `interpolation` (Enum NEAREST/BILINEAR), `level` (0 to 1), `gamma` (1 to 3).
 - **Advanced**: `workingResolution` (Discrete: 128/256/384/512/AUTO).
 
-**Resolved (research):** LX has no dedicated file/path parameter type, and a `StringParameter` renders in the auto panel as a plain **text box with no browse button** (GLX's `UIFileNameBox` is text-only). The built-in `ImagePattern`'s file-browse button lives in the closed studio UI layer and calls `GLX.showOpenFileDialog(...)`, which is only reachable from a custom device UI, that is the plugin path we deliberately avoided (Pro License, restart on change). So with the auto panel, the user **types or pastes the path** into `fileName` and hits `reload`. A native browse dialog is a later option only if we accept a custom UI. Tracked as a decision in `PROGRESS.md`.
+**Resolved (research, superseded):** LX has no dedicated file/path parameter type, and a `StringParameter` renders in the auto panel as a plain **text box with no browse button** (GLX's `UIFileNameBox` is text-only). That part still holds. The conclusion drawn from it, that a native browse dialog needs a custom device UI and therefore a Pro License, was **wrong**, and is corrected below.
+
+**Resolved (2026-08-02, verified against the 1.2.1 jars):** the native file chooser is reachable from a plain `LXPattern` on the FREE tier, and `browse` now ships as a `TriggerParameter`. Two facts settle it:
+
+- **`heronarts.glx.GLX extends heronarts.lx.LX`.** The `LX` a pattern is handed at construction *is* the GLX instance when running in the desktop app, so `lx instanceof GLX` gives direct access to `showOpenFileDialog(title, description, extensions, defaultPath, callback)`. No UI layer is involved and nothing needs registering. Under a headless LX the check simply fails and the trigger no-ops.
+- The custom-device-UI route would also have worked, contrary to the original finding. `LXStudio$UI.instantiateDeviceControls` checks `component instanceof UIDeviceControls` **before** consulting the plugin registry, so a pattern that implements the interface becomes its own device UI without a plugin, which is what `canRunPlugins()` gates ("Your license does not support running custom plugins" lives in glxstudio). We do not need this for the file chooser, but it is the door to a custom panel later, and it is not Pro-gated.
 
 ## Packaging
 

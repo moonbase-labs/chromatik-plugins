@@ -44,6 +44,7 @@ The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` p
 - **Four wrap modes.** `CLAMP`, `CLIP`, `TILE`, `MIRROR`, matching the vocabulary of the built-in `ImagePattern`.
 - **Transparent background.** `CLEAR` lets lower LX layers show through where the image doesn't reach.
 - **Bilinear sampling.** Cuts the shimmer you get when a sparse point cloud samples a small texture.
+- **Native file chooser.** A `Browse` button opens the real OS open dialog, no typing paths. Files under `~/Chromatik` are stored as relative paths so a shared project still finds them.
 - **Zero custom UI.** A plain `LXPattern`, so Chromatik auto-generates the control panel and the whole thing runs on the **FREE licence tier**.
 
 ## 🔧 Requirements
@@ -114,6 +115,7 @@ Chromatik generates the panel from these automatically.
 | Parameter | Type | Default | Range | Description |
 |---|---|---|---|---|
 | `File` | String | `LaserphileVideo/steamed-hams.mp4` | | Absolute path, or relative to `~/Chromatik` |
+| `Browse` | Trigger | | | Pick a video with the native file chooser |
 | `Reload` | Trigger | | | Re-open the file |
 | `Play` | Boolean | `on` | | Run the playhead |
 | `Loop` | Boolean | `on` | | Start again on reaching the end |
