@@ -6,27 +6,51 @@ import heronarts.lx.LX;
 import heronarts.lx.LXCategory;
 import heronarts.lx.LXComponent;
 import heronarts.lx.color.LXColor;
+import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.CompoundParameter;
 import heronarts.lx.parameter.EnumParameter;
 import heronarts.lx.parameter.StringParameter;
+import heronarts.lx.parameter.TriggerParameter;
 import heronarts.lx.pattern.LXPattern;
 
 /**
  * Plays a video file onto the LX model with an ImagePattern-style projection.
  *
- * A background thread decodes frames; run() projects the latest frame onto every point using
- * the projection controls. M2 scope. Transport (play/pause/loop/speed/seek) is M3, so for now
- * playback auto-starts and loops.
+ * A background thread decodes frames into a buffer; run() advances the playhead, picks the
+ * frame due now, and projects it onto every point. Transport (play/pause, loop, speed, seek,
+ * restart) drives the playhead on this thread and reaches the decoder through the pipeline's
+ * mailbox, so nothing here blocks on decode or I/O.
  */
 @LXCategory("Laserphile")
 @LXComponent.Name("Video")
 public class VideoPattern extends LXPattern {
+
+  /**
+   * How long the playhead readout holds still after the user edits it. Without the pause, the
+   * frame-by-frame update would fight a drag in progress and yank the slider back.
+   */
+  private static final double QUARTER_SECOND_IN_MS = 250;
 
   private final LX lx;
 
   public final StringParameter fileName =
     new StringParameter("File", "LaserphileVideo/steamed-hams.mp4")
       .setDescription("Video file: an absolute path, or a path relative to ~/Chromatik");
+  public final TriggerParameter reload =
+    new TriggerParameter("Reload").setDescription("Re-open the video file");
+
+  public final BooleanParameter play =
+    new BooleanParameter("Play", true).setDescription("Run the playhead");
+  public final BooleanParameter loop =
+    new BooleanParameter("Loop", true).setDescription("Start again on reaching the end");
+  public final CompoundParameter speed =
+    new CompoundParameter("Speed", 1, 0.1, 4).setExponent(2)
+      .setDescription("Playback rate: 1 is normal speed");
+  public final CompoundParameter position =
+    new CompoundParameter("Position", 0, 0, 1)
+      .setDescription("Playhead through the video: follows playback, and seeks when dragged");
+  public final TriggerParameter restart =
+    new TriggerParameter("Restart").setDescription("Jump back to the start and play");
 
   public final CompoundParameter yaw =
     new CompoundParameter("Yaw", 0, -180, 180).setDescription("Rotation about the vertical axis");
@@ -63,18 +87,34 @@ public class VideoPattern extends LXPattern {
   public final EnumParameter<ProjectionParams.Interpolation> interpolation =
     new EnumParameter<ProjectionParams.Interpolation>("Interp", ProjectionParams.Interpolation.BILINEAR)
       .setDescription("Nearest is blocky; bilinear is smoother");
+  public final CompoundParameter level =
+    new CompoundParameter("Level", 1, 0, 1).setDescription("Master brightness");
 
   private final FramePipeline pipeline = new FramePipeline();
+  private final PlaybackClock clock = new PlaybackClock();
   private final Projector projector = new Projector();
   private final ProjectionParams params = new ProjectionParams();
 
-  private volatile boolean active = false;
+  // Parameter listeners can fire on the UI thread, so they only raise a flag; run() acts on it.
+  private volatile boolean openRequested = false;
+  private volatile boolean restartRequested = false;
+  private volatile boolean positionEdited = false;
+
+  // Set while run() writes the playhead readout, so the write is not mistaken for a user edit.
+  private boolean updatingPosition = false;
+  private double msSinceUserPositionEdit = QUARTER_SECOND_IN_MS;
 
   public VideoPattern(LX lx) {
     super(lx);
     this.lx = lx;
 
     addParameter("file", this.fileName);
+    addParameter("reload", this.reload);
+    addParameter("play", this.play);
+    addParameter("loop", this.loop);
+    addParameter("speed", this.speed);
+    addParameter("position", this.position);
+    addParameter("restart", this.restart);
     addParameter("yaw", this.yaw);
     addParameter("pitch", this.pitch);
     addParameter("roll", this.roll);
@@ -89,16 +129,22 @@ public class VideoPattern extends LXPattern {
     addParameter("wrap", this.wrapMode);
     addParameter("background", this.backgroundMode);
     addParameter("interpolation", this.interpolation);
+    addParameter("level", this.level);
 
-    this.fileName.addListener(parameter -> {
-      if (this.active) {
-        restart();
+    this.fileName.addListener(parameter -> this.openRequested = true);
+    this.reload.onTrigger(() -> this.openRequested = true);
+    this.restart.onTrigger(() -> this.restartRequested = true);
+
+    this.position.addListener(parameter -> {
+      if (!this.updatingPosition) {
+        this.positionEdited = true;
       }
     });
   }
 
-  private void restart() {
+  private void openCurrentFile() {
     this.pipeline.stop();
+    this.clock.reset();
 
     final String resolved = resolvePath(this.fileName.getString());
     if (resolved != null) {
@@ -122,13 +168,12 @@ public class VideoPattern extends LXPattern {
 
   @Override
   protected void onActive() {
-    this.active = true;
-    restart();
+    this.openRequested = false;
+    openCurrentFile();
   }
 
   @Override
   protected void onInactive() {
-    this.active = false;
     this.pipeline.stop();
   }
 
@@ -140,12 +185,16 @@ public class VideoPattern extends LXPattern {
 
   @Override
   protected void run(double deltaMs) {
-    final VideoFrame frame = this.pipeline.latest();
+    serviceTransport(deltaMs);
+
+    final VideoFrame frame = this.pipeline.frameFor(this.clock.streamTimeMs());
 
     if (frame == null) {
       setColors(LXColor.hsb(0, 0, 0)); // black until the first frame is decoded
       return;
     }
+
+    updatePlayheadReadout(frame);
 
     this.params.yaw = this.yaw.getValue();
     this.params.pitch = this.pitch.getValue();
@@ -161,8 +210,66 @@ public class VideoPattern extends LXPattern {
     this.params.wrapMode = this.wrapMode.getEnum();
     this.params.backgroundMode = this.backgroundMode.getEnum();
     this.params.interpolation = this.interpolation.getEnum();
+    this.params.level = this.level.getValue();
     this.params.recompute();
 
     this.projector.project(frame, this.params, this.model, this.colors);
+  }
+
+  /**
+   * Fold the transport controls into the clock and the decode thread, then advance the playhead.
+   * Every mutation of the clock and the pipeline funnels through here so it all happens on the
+   * engine thread, which is why the parameter listeners only raise flags.
+   */
+  private void serviceTransport(double deltaMs) {
+    if (this.openRequested) {
+      this.openRequested = false;
+      openCurrentFile();
+    }
+
+    this.pipeline.setLooping(this.loop.isOn());
+    this.clock.setSpeed(this.speed.getValue());
+    this.clock.setPlaying(this.play.isOn());
+
+    if (this.restartRequested) {
+      this.restartRequested = false;
+      this.clock.requestSeek(0);
+      this.play.setValue(true);
+    }
+
+    if (this.positionEdited) {
+      this.positionEdited = false;
+      this.msSinceUserPositionEdit = 0;
+
+      final long durationMs = this.pipeline.durationMs();
+      if (durationMs > 0) {
+        this.clock.requestSeek(this.position.getValue() * durationMs);
+      }
+    } else if (this.msSinceUserPositionEdit < QUARTER_SECOND_IN_MS) {
+      this.msSinceUserPositionEdit += deltaMs;
+    }
+
+    if (this.clock.hasPendingSeek()) {
+      this.pipeline.requestSeek(this.clock.takePendingSeek());
+    }
+
+    this.clock.tick(deltaMs);
+
+    if (this.pipeline.isDrained()) {
+      this.play.setValue(false); // ran off the end with looping off; Restart picks it up again
+    }
+  }
+
+  /** Push the playhead back to the slider, unless the user is the one moving it. */
+  private void updatePlayheadReadout(VideoFrame frame) {
+    final long durationMs = this.pipeline.durationMs();
+
+    if (durationMs <= 0 || this.msSinceUserPositionEdit < QUARTER_SECOND_IN_MS) {
+      return;
+    }
+
+    this.updatingPosition = true;
+    this.position.setValue(Math.min(1.0, frame.mediaTimeMs / (double) durationMs));
+    this.updatingPosition = false;
   }
 }

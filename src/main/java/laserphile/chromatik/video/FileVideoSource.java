@@ -15,6 +15,7 @@ import org.bytedeco.javacv.Java2DFrameConverter;
 final class FileVideoSource implements FrameSource {
 
   private static final double DEFAULT_FRAME_RATE = 30.0;
+  private static final long MICROSECONDS_PER_MS = 1000;
 
   private final String path;
   private final Java2DFrameConverter converter = new Java2DFrameConverter();
@@ -38,6 +39,12 @@ final class FileVideoSource implements FrameSource {
   }
 
   @Override
+  public long durationMs() {
+    final long lengthMicroseconds = this.grabber.getLengthInTime();
+    return lengthMicroseconds > 0 ? lengthMicroseconds / MICROSECONDS_PER_MS : DURATION_UNKNOWN;
+  }
+
+  @Override
   public VideoFrame grab() throws Exception {
     final Frame frame = this.grabber.grabImage();
     if (frame == null) {
@@ -53,12 +60,13 @@ final class FileVideoSource implements FrameSource {
     final int height = image.getHeight();
     final int[] argb = image.getRGB(0, 0, width, height, null, 0, width);
 
-    return new VideoFrame(argb, width, height);
+    return new VideoFrame(argb, width, height, frame.timestamp / MICROSECONDS_PER_MS);
   }
 
   @Override
-  public void seekToStart() throws Exception {
-    this.grabber.setTimestamp(0);
+  public void seek(long mediaTimeMs) throws Exception {
+    // Video stream only: the audio stream is never decoded, so seeking it would be wasted work.
+    this.grabber.setVideoTimestamp(Math.max(0, mediaTimeMs) * MICROSECONDS_PER_MS);
   }
 
   @Override

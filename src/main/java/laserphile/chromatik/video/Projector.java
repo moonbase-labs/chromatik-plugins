@@ -34,8 +34,24 @@ final class Projector {
       final double u = rotatedX * params.invScaleX + 0.5 + params.scrollX;
       final double v = rotatedY * params.invScaleY + 0.5 + params.scrollY;
 
-      colors[point.index] = sampleWrapped(argb, width, height, u, v, params, background);
+      final int sampled = sampleWrapped(argb, width, height, u, v, params, background);
+
+      colors[point.index] = applyLevel(sampled, params.level);
     }
+  }
+
+  /** Master brightness: scales the colour channels and leaves alpha (the CLEAR mode) alone. */
+  private static int applyLevel(int argb, double level) {
+    if (level >= 1) {
+      return argb;
+    }
+
+    final int alpha = argb & 0xff000000;
+    final int red = (int) (((argb >> 16) & 0xff) * level);
+    final int green = (int) (((argb >> 8) & 0xff) * level);
+    final int blue = (int) ((argb & 0xff) * level);
+
+    return alpha | (red << 16) | (green << 8) | blue;
   }
 
   /** Apply the wrap mode to (u, v), then sample; out-of-bounds under CLIP returns background. */

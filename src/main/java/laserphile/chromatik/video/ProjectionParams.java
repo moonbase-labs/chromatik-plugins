@@ -32,6 +32,7 @@ public final class ProjectionParams {
   WrapMode wrapMode = WrapMode.CLAMP;
   BackgroundMode backgroundMode = BackgroundMode.BLACK;
   Interpolation interpolation = Interpolation.BILINEAR;
+  double level = 1;
 
   // Computed: the rotation matrix R (project() applies its transpose), and reciprocal scales.
   double m00, m01, m02;
