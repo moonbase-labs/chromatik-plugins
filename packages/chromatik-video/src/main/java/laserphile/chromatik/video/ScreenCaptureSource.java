@@ -22,8 +22,8 @@ import heronarts.lx.LX;
  * frame that the OS will never deliver. That wait cannot be bounded from here, because the device
  * blocks inside its own header read where the grabber's timeout does not reach. It is survivable
  * only because {@link #open()} runs on the capture thread, which is a daemon: a wedged capture
- * shows black and leaves the rest of the app alone. {@link FramePipeline} is what notices the
- * silence and says so in the log.
+ * shows black and leaves the rest of the app alone. {@link ScreenCapturePattern} is what notices
+ * the silence and says so in the log.
  */
 final class ScreenCaptureSource implements FrameSource {
 
@@ -36,16 +36,25 @@ final class ScreenCaptureSource implements FrameSource {
    */
   private static final int MAX_CAPTURE_EDGE = 480;
 
+  /**
+   * Fastest worth capturing at. The engine's own frame rate decides the capture rate, and it goes
+   * up to 300, which no display produces and nothing downstream could use: the engine only ever
+   * looks at the newest frame, so anything past its own rate is decoded and thrown away.
+   */
+  private static final double MAX_CAPTURE_FRAME_RATE = 60;
+
   /** The desktop has no natural frame rate, so the capture rate is also the reported one. */
   private final double targetFrameRate;
   private final int screenIndex;
+  private final boolean captureCursor;
 
   private FFmpegFrameGrabber grabber;
   private final Java2DFrameConverter converter = new Java2DFrameConverter();
 
-  ScreenCaptureSource(int screenIndex, double targetFrameRate) {
+  ScreenCaptureSource(int screenIndex, double engineFrameRate, boolean captureCursor) {
     this.screenIndex = screenIndex;
-    this.targetFrameRate = targetFrameRate;
+    this.targetFrameRate = Math.min(engineFrameRate, MAX_CAPTURE_FRAME_RATE);
+    this.captureCursor = captureCursor;
   }
 
   /** The FFmpeg input device that grabs the desktop, one per desktop platform. */
@@ -68,7 +77,7 @@ final class ScreenCaptureSource implements FrameSource {
     this.grabber = new FFmpegFrameGrabber(inputFor(device));
     this.grabber.setFormat(formatFor(device));
     this.grabber.setOption("framerate", String.valueOf(Math.round(this.targetFrameRate)));
-    this.grabber.setOption(cursorOptionFor(device), "1");
+    this.grabber.setOption(cursorOptionFor(device), this.captureCursor ? "1" : "0");
 
     LX.log(String.format(
       "[LaserphileVideo] opening screen capture via %s (%s). This needs screen recording "
