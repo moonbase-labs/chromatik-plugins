@@ -53,11 +53,13 @@ Record each decision with a date and one-line rationale.
 
 ## Open questions
 
-- **FREE-tier network output (larger-project concern, not a plugin blocker):** the log shows `Network output is disabled due to license restrictions` on FREE. Rendering/preview works fine (that is what we develop against), but driving physical LEDs over Art-Net/sACN/DDP is limited on FREE. If the larger project outputs to real hardware, check what the FREE tier actually allows or whether a paid tier is needed. Does not affect building/testing the video pattern.
+- None open.
 
 ## Resolved (2026-07-19 research)
 
-- **Licensing (existential) — CONFIRMED OK**: custom content packages load and run under the FREE tier. Smoke test (`SmokeTestPattern`, solid red) built, installed to `~/Chromatik/Packages`, auto-discovered, and rendered in-app. Log format for a loaded package: `Loading package content from: <jar>` then `Package:<name> version:<v> lxVersion:<v> buildTimestamp:<ts>`. The no-plugin/auto-panel design stays valid (and the Pro-gated plugin/custom-UI path is genuinely unavailable on FREE).
+- **FREE tier drives hardware up to 1,000 output points** (verified 2026-08-02 against the 1.2.1 jars). `LXEngine` recomputes `restricted = (maxOutputPoints >= 0) && (frame.main.length > maxOutputPoints)` every loop, so Art-Net/sACN/DDP/OPC flow whenever the model sits under the licensed count, and pause for exactly as long as it sits over. That is what the `disabled` / `restored` pairs seconds apart in the Chromatik logs record. Output caps from `License.getMaxOutputPoints()`: NONE 0, **FREE 1,000**, LITE 5,000, BASIC 20,000, PRO 50,000, ELITE unlimited. Render caps: 20,000 through BASIC, 50,000 PRO, unlimited ELITE. A paid tier buys headroom past 1,000 points; the larger project only needs one if the rig is bigger than that.
+
+- **Licensing (existential) — CONFIRMED OK**: custom content packages load and run under the FREE tier. Smoke test (`SmokeTestPattern`, solid red) built, installed to `~/Chromatik/Packages`, auto-discovered, and rendered in-app. Log format for a loaded package: `Loading package content from: <jar>` then `Package:<name> version:<v> lxVersion:<v> buildTimestamp:<ts>`. The no-plugin/auto-panel design stays valid, now as a choice rather than a licensing constraint: FREE runs both custom plugins and custom device UIs, per the 2026-08-02 decisions-log entries.
 
 - **File-picker** (first half stands, conclusion overturned 2026-08-02): LX has no dedicated file/path parameter type, and a `StringParameter` renders as a text box with no browse button (GLX `UIFileNameBox` is text-only). But the inference that a native dialog therefore needs a Pro License was wrong: `GLX extends LX`, so the `lx` a pattern already holds *is* the dialog owner in the desktop app. See the 2026-08-02 decisions-log entries.
 - **FFmpeg licence**: the default Bytedeco `ffmpeg` artifact is LGPL; only the `-gpl` classifier variants are GPL. Use the default LGPL build.

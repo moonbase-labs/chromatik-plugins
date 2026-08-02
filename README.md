@@ -106,7 +106,7 @@ Then:
 > Relative paths resolve under `~/Chromatik/`, absolute paths are used verbatim. Prefer relative: a `.lxp` project that stores an absolute path breaks the moment someone else opens it.
 
 > [!IMPORTANT]
-> Chromatik's **FREE tier disables network output**, so Art-Net, sACN, and DDP won't drive physical fixtures. The 3D preview renders fine, which is enough to develop and test patterns against. Driving real LEDs needs a paid tier or an external output server.
+> On Chromatik's FREE tier, Art-Net, sACN, DDP, and OPC drive real fixtures for models up to **1,000 points**, with rendering capped separately at 20,000. Develop and test against the 3D preview and you stay well inside both. Go over the output cap and Chromatik holds output back for as long as the model stays over, logging `Network output is disabled due to license restrictions.` Rigs above 1,000 points want a paid tier or an external output server.
 
 ## 🎛️ Parameters
 
