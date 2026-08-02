@@ -18,6 +18,7 @@ final class FileVideoSource implements FrameSource {
   private final Java2DFrameConverter converter = new Java2DFrameConverter();
 
   private FFmpegFrameGrabber grabber;
+  private ColorSpaceCorrection correction = ColorSpaceCorrection.NONE;
 
   FileVideoSource(String path) {
     this.path = path;
@@ -27,6 +28,8 @@ final class FileVideoSource implements FrameSource {
   public void open() throws Exception {
     this.grabber = new FFmpegFrameGrabber(this.path);
     this.grabber.start();
+
+    this.correction = ColorSpaceCorrection.forStream(this.grabber, this.path);
   }
 
   @Override
@@ -56,7 +59,13 @@ final class FileVideoSource implements FrameSource {
       return null;
     }
 
-    return VideoFrame.from(frame, this.converter);
+    final VideoFrame decoded = VideoFrame.from(frame, this.converter);
+
+    if (decoded != null) {
+      this.correction.applyInPlace(decoded.argb);
+    }
+
+    return decoded;
   }
 
   @Override

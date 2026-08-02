@@ -50,6 +50,7 @@ final class ScreenCaptureSource implements FrameSource {
 
   private FFmpegFrameGrabber grabber;
   private final Java2DFrameConverter converter = new Java2DFrameConverter();
+  private ColorSpaceCorrection correction = ColorSpaceCorrection.NONE;
 
   ScreenCaptureSource(int screenIndex, double engineFrameRate, boolean captureCursor) {
     this.screenIndex = screenIndex;
@@ -87,6 +88,11 @@ final class ScreenCaptureSource implements FrameSource {
     this.grabber.start();
 
     capFrameSize();
+
+    // A capture device usually hands over RGB already, in which case no colour-difference
+    // conversion happens and there is nothing to put right. Asking anyway costs one read and
+    // covers the devices that do go through a colour-difference format.
+    this.correction = ColorSpaceCorrection.forStream(this.grabber, toString());
 
     LX.log(String.format("[LaserphileVideo] screen capture open: %dx%d at %.0f fps",
       this.grabber.getImageWidth(), this.grabber.getImageHeight(), this.targetFrameRate));
@@ -200,7 +206,13 @@ final class ScreenCaptureSource implements FrameSource {
       return null;
     }
 
-    return VideoFrame.from(frame, this.converter);
+    final VideoFrame captured = VideoFrame.from(frame, this.converter);
+
+    if (captured != null) {
+      this.correction.applyInPlace(captured.argb);
+    }
+
+    return captured;
   }
 
   /** Nothing to seek: the desktop only ever has a present. */
