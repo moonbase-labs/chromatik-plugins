@@ -1,7 +1,5 @@
 package laserphile.chromatik.video;
 
-import java.awt.image.BufferedImage;
-
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.Java2DFrameConverter;
@@ -15,7 +13,6 @@ import org.bytedeco.javacv.Java2DFrameConverter;
 final class FileVideoSource implements FrameSource {
 
   private static final double DEFAULT_FRAME_RATE = 30.0;
-  private static final long MICROSECONDS_PER_MS = 1000;
 
   private final String path;
   private final Java2DFrameConverter converter = new Java2DFrameConverter();
@@ -41,7 +38,15 @@ final class FileVideoSource implements FrameSource {
   @Override
   public long durationMs() {
     final long lengthMicroseconds = this.grabber.getLengthInTime();
-    return lengthMicroseconds > 0 ? lengthMicroseconds / MICROSECONDS_PER_MS : DURATION_UNKNOWN;
+
+    return lengthMicroseconds > 0
+      ? lengthMicroseconds / VideoFrame.MICROSECONDS_PER_MS
+      : DURATION_UNKNOWN;
+  }
+
+  @Override
+  public boolean isLive() {
+    return false;
   }
 
   @Override
@@ -51,22 +56,13 @@ final class FileVideoSource implements FrameSource {
       return null;
     }
 
-    final BufferedImage image = this.converter.convert(frame);
-    if (image == null) {
-      return null;
-    }
-
-    final int width = image.getWidth();
-    final int height = image.getHeight();
-    final int[] argb = image.getRGB(0, 0, width, height, null, 0, width);
-
-    return new VideoFrame(argb, width, height, frame.timestamp / MICROSECONDS_PER_MS);
+    return VideoFrame.from(frame, this.converter);
   }
 
   @Override
   public void seek(long mediaTimeMs) throws Exception {
     // Video stream only: the audio stream is never decoded, so seeking it would be wasted work.
-    this.grabber.setVideoTimestamp(Math.max(0, mediaTimeMs) * MICROSECONDS_PER_MS);
+    this.grabber.setVideoTimestamp(Math.max(0, mediaTimeMs) * VideoFrame.MICROSECONDS_PER_MS);
   }
 
   @Override
@@ -83,5 +79,11 @@ final class FileVideoSource implements FrameSource {
     }
 
     this.grabber = null;
+  }
+
+  /** Log lines are the only place a source has to name itself. */
+  @Override
+  public String toString() {
+    return this.path;
   }
 }

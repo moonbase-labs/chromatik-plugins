@@ -19,6 +19,13 @@ interface FrameSource extends AutoCloseable {
   /** Total media length, or {@link #DURATION_UNKNOWN} if the source has no timeline. */
   long durationMs();
 
+  /**
+   * True for a source that produces frames as they happen rather than from a recording: there is
+   * no timeline, so nothing to seek, loop, or pace, and the only frame worth keeping is the newest.
+   * {@link FramePipeline} buffers a live source differently for that reason.
+   */
+  boolean isLive();
+
   /** The next decoded frame, or null at end of stream. */
   VideoFrame grab() throws Exception;
 
