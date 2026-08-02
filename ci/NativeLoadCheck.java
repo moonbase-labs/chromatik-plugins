@@ -115,6 +115,7 @@ public class NativeLoadCheck {
     boolean hasPackageFile = false;
     boolean hasPattern = false;
     int bundledDecodeClasses = 0;
+    int bundledLwjglCoreClasses = 0;
 
     try (JarFile contents = new JarFile(jar)) {
       for (String entry : contents.stream().map(java.util.zip.ZipEntry::getName).toList()) {
@@ -122,6 +123,8 @@ public class NativeLoadCheck {
           hasPackageFile = true;
         } else if (entry.startsWith("org/bytedeco/")) {
           bundledDecodeClasses++;
+        } else if (entry.startsWith("org/lwjgl/system/")) {
+          bundledLwjglCoreClasses++;
         } else if (entry.startsWith("laserphile/chromatik/") && entry.endsWith("Pattern.class")) {
           hasPattern = true;
         }
@@ -143,7 +146,20 @@ public class NativeLoadCheck {
         jar.getName(), bundledDecodeClasses));
     }
 
-    System.out.printf("%s: package, pattern, and no bundled decode stack%n", jar.getName());
+    // The same trap as above, for the plugin that brings its own OpenGL bindings. lwjgl-opengl is
+    // ours to bundle because Chromatik does not ship it, but LWJGL core underneath it is already
+    // loaded, and a second copy of org/lwjgl/system means a duplicate-class error for every one of
+    // them. It happens by omission: lwjgl-opengl asks for core at compile scope, so leaving it
+    // alone is enough to pull it in.
+    if (bundledLwjglCoreClasses > 0) {
+      throw new IllegalStateException(String.format(
+        "%s bundles %d org/lwjgl/system entries. LWJGL core is provided by Chromatik, so the "
+          + "module has to declare it at provided scope to override what lwjgl-opengl asks for.",
+        jar.getName(), bundledLwjglCoreClasses));
+    }
+
+    System.out.printf("%s: package, pattern, and nothing Chromatik already provides%n",
+      jar.getName());
   }
 
   private static void checkDecode() throws Exception {

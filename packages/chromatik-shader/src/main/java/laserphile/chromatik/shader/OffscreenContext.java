@@ -38,7 +38,7 @@ interface OffscreenContext extends AutoCloseable {
     return switch (Platform.get()) {
       case MACOSX -> new MacosContext();
       case WINDOWS -> throw unsupported("Windows");
-      case LINUX -> throw unsupported("Linux");
+      case LINUX -> new LinuxContext();
       case FREEBSD -> throw unsupported("FreeBSD");
     };
   }

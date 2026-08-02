@@ -99,6 +99,21 @@ jobs:
             fi
           done
 
+      # The shader plugin has a budget of its own because it legitimately carries something: the
+      # OpenGL bindings Chromatik does not ship, which are about a megabyte of classes plus a small
+      # native per platform. The ceiling is set just above that, so re-bundling the decode stack or
+      # LWJGL core still shows up here as well as in the per-jar check during verify.
+      - name: Shader jar carries its GL bindings and nothing else
+        run: |
+          for jar in dist/chromatik-shader-*.jar; do
+            size=$(stat -c%s "$jar")
+            echo "$jar is $size bytes"
+            if [ "$size" -gt 4194304 ]; then
+              echo "::error::$jar is over 4 MB. It should carry lwjgl-opengl and its native, and nothing else."
+              exit 1
+            fi
+          done
+
       # chromatik-mcp ships no native, so nothing about it varies by platform and it has no place
       # in the verify matrix. What it does need is a check that the wire format still matches both
       # protocol eras, and that the jar is still only its own classes: gson is provided because
@@ -135,18 +150,23 @@ jobs:
           - name: macOS arm64
             runner: macos-15
             jar: 'chromatik-core-*-macos.jar'
+            shader: 'chromatik-shader-*-macos.jar'
           - name: macOS x86_64
             runner: macos-15-intel
             jar: 'chromatik-core-*-macos.jar'
+            shader: 'chromatik-shader-*-macos.jar'
           - name: Windows x86_64
             runner: windows-2025
             jar: 'chromatik-core-*-windows.jar'
+            shader: 'chromatik-shader-*-windows.jar'
           - name: Linux x86_64
             runner: ubuntu-24.04
             jar: 'chromatik-core-*-linux-x86_64.jar'
+            shader: 'chromatik-shader-*-linux-x86_64.jar'
           - name: Linux arm64
             runner: ubuntu-24.04-arm
             jar: 'chromatik-core-*-linux-arm64.jar'
+            shader: 'chromatik-shader-*-linux-arm64.jar'
     steps:
       - uses: actions/checkout@v7
 
@@ -171,7 +191,19 @@ jobs:
           echo "checking $core against the plugin jars"
           java -cp "$core" ci/NativeLoadCheck.java \
             dist/chromatik-video-*.jar \
-            dist/chromatik-screen-*.jar
+            dist/chromatik-screen-*.jar \
+            dist/${{ matrix.shader }}
+
+      # Whether the shader plugin can reach a GPU is a separate question from whether its jar is
+      # put together correctly, and only the first of those is worth asserting here. A hosted
+      # runner has no display: Linux has no X server for GLX to talk to, and Windows has only the
+      # software rasteriser, which stops well short of the 3.3 core profile this needs. So the jar
+      # is checked for shape above and its rendering is not checked at all, on any platform. macOS
+      # is the only one where that has been done, by hand, on real hardware.
+      - name: Note what the shader plugin was and was not checked for
+        shell: bash
+        run: |
+          echo "::notice::${{ matrix.name }}: shader jar shape verified. Rendering is not verified on any CI runner; only macOS has been confirmed on hardware."
 
   release:
     name: Publish release
