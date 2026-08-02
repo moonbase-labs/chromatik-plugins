@@ -361,20 +361,51 @@ final class WriteTools {
 
       for (LXParameter candidate : owner.getParameters()) {
         final String key = candidate.getPath();
-        final String label = candidate.getLabel();
 
-        // Matching the label as well as the key is what catches an agent that read a panel
-        // screenshot or a README table instead of calling lx_docs.
-        final boolean near = key.toLowerCase(Locale.ROOT).startsWith(wanted)
-            || wanted.startsWith(key.toLowerCase(Locale.ROOT))
-            || (label != null && label.toLowerCase(Locale.ROOT).equals(wanted));
-
-        if (near && suggestions.size() < 5) {
+        if (isNearMiss(wanted, key, candidate.getLabel()) && suggestions.size() < 5) {
           suggestions.add(key);
         }
       }
 
       return suggestions;
+    }
+
+    /**
+     * Whether a key is close enough to what was asked for to be worth offering.
+     *
+     * <p>Three ways to be close, each for a mistake seen in practice. Prefix containment catches a
+     * Java field name reached for instead of the path key, which is how {@code wrapMode} finds
+     * {@code wrap}. An exact label match catches an agent working from a panel screenshot or a
+     * README table rather than from lx_docs. A shared prefix catches the same-family-wrong-suffix
+     * guess, which the first two both miss: {@code scrollSpeed} shares six characters with
+     * {@code scrollX} and {@code scrollY} but neither contains the other.
+     *
+     * <p>Four characters is the threshold. Shorter and unrelated controls start matching on a
+     * common English stem, which buries the real candidate in noise.
+     */
+    private boolean isNearMiss(String wanted, String key, String label) {
+      final String candidate = key.toLowerCase(Locale.ROOT);
+
+      if (candidate.startsWith(wanted) || wanted.startsWith(candidate)) {
+        return true;
+      }
+
+      if (label != null && label.toLowerCase(Locale.ROOT).equals(wanted)) {
+        return true;
+      }
+
+      return sharedPrefixLength(wanted, candidate) >= 4;
+    }
+
+    private int sharedPrefixLength(String left, String right) {
+      final int shortest = Math.min(left.length(), right.length());
+      int shared = 0;
+
+      while (shared < shortest && left.charAt(shared) == right.charAt(shared)) {
+        shared++;
+      }
+
+      return shared;
     }
 
     private String join(String under, String path) {
