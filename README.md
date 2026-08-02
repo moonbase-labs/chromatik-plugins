@@ -44,7 +44,7 @@ The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` p
 - **Four wrap modes.** `CLAMP`, `CLIP`, `TILE`, `MIRROR`, matching the vocabulary of the built-in `ImagePattern`.
 - **Transparent background.** `CLEAR` lets lower LX layers show through where the image doesn't reach.
 - **Bilinear sampling.** Cuts the shimmer you get when a sparse point cloud samples a small texture.
-- **Native file chooser.** A `Browse` button opens the real OS open dialog, no typing paths. Files under `~/Chromatik` are stored as relative paths so a shared project still finds them.
+- **Native file chooser.** A `Browse` button opens the real OS open dialog, no typing paths. It opens on the current video's folder, or on the folder you browsed to last, so picking a second clip is one click away. Files under `~/Chromatik` are stored as relative paths so a shared project still finds them.
 - **Zero custom UI.** A plain `LXPattern`, so Chromatik auto-generates the control panel and the whole thing runs on the **FREE licence tier**.
 
 ## 🔧 Requirements

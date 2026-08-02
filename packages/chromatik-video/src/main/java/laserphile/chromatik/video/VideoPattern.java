@@ -37,6 +37,13 @@ public class VideoPattern extends LXPattern {
   /** Offered by the file chooser. FFmpeg reads far more; these are the containers worth listing. */
   private static final String[] VIDEO_EXTENSIONS = { "mp4", "mov", "m4v", "avi", "mkv", "webm" };
 
+  /**
+   * Folder the last browse landed in. Shared by every Video pattern and kept for the run of the
+   * app, so a freshly added pattern opens the chooser where the previous one finished instead of
+   * back at the media folder. Written from the dialog callback, read when the next dialog opens.
+   */
+  private static volatile String lastBrowsedFolder = null;
+
   private final LX lx;
 
   public final StringParameter fileName =
@@ -184,8 +191,8 @@ public class VideoPattern extends LXPattern {
   }
 
   /**
-   * Where the chooser opens: the folder holding the current video, else the Chromatik media
-   * folder.
+   * Where the chooser opens: the folder holding the current video, else the folder the last
+   * browse landed in, else the Chromatik media folder.
    *
    * The dialog reads whatever follows the final separator as a file name and opens the folder
    * above it, so a folder has to be handed over with its trailing separator kept.
@@ -195,6 +202,10 @@ public class VideoPattern extends LXPattern {
 
     if (currentFolder != null) {
       return asFolderPath(currentFolder.getAbsolutePath());
+    }
+
+    if (lastBrowsedFolder != null) {
+      return asFolderPath(lastBrowsedFolder);
     }
 
     return asFolderPath(this.lx.getMediaPath());
@@ -223,6 +234,8 @@ public class VideoPattern extends LXPattern {
     if (chosenPath == null || chosenPath.isBlank()) {
       return; // the user cancelled
     }
+
+    lastBrowsedFolder = new File(chosenPath).getParent();
 
     this.fileName.setValue(relativizeToMediaFolder(chosenPath));
   }
