@@ -733,6 +733,31 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
       newKnob(pattern.speed),
       newKnob(pattern.projection.level));
 
+    addColumn(device, "Move",
+      newKnob(pattern.projection.translateX),
+      newKnob(pattern.projection.translateY),
+      newKnob(pattern.projection.translateZ));
+
+    addColumn(device, "Rotate",
+      newKnob(pattern.projection.yaw),
+      newKnob(pattern.projection.pitch),
+      newKnob(pattern.projection.roll));
+
+    addColumn(device, "Zoom",
+      newKnob(pattern.projection.scale),
+      newKnob(pattern.projection.stretchX),
+      newKnob(pattern.projection.stretchY));
+
+    addColumn(device, "Scroll",
+      newKnob(pattern.projection.scrollX),
+      newKnob(pattern.projection.scrollY),
+      newKnob(pattern.projection.gamma));
+
+    addColumn(device, "Look",
+      newDropMenu(pattern.projection.wrapMode, PANEL_COLUMN_WIDTH),
+      newDropMenu(pattern.projection.backgroundMode, PANEL_COLUMN_WIDTH),
+      newDropMenu(pattern.projection.interpolation, PANEL_COLUMN_WIDTH));
+
     addColumn(device, "Time", newButton(pattern.play, PANEL_COLUMN_WIDTH));
 
     // Rebuilt from scratch whenever a shader loads, because which knobs belong here is a property
