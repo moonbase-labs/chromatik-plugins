@@ -140,21 +140,31 @@ Changes we add:
   - JavaCV: `org.bytedeco:javacv:1.5.11` + `org.bytedeco:javacpp:1.5.11` + `org.bytedeco:ffmpeg:7.1-1.5.11`, pulling the **single `macosx-arm64` classifier** on `ffmpeg` and `javacpp` (the arm64 ffmpeg native is ~18.6 MB). Do **not** use the `javacv-platform`/`ffmpeg-platform` aggregators (they pull every OS). The default `ffmpeg` artifact is **LGPL**; the `-gpl` classifier variants are GPL, avoid them.
   - JCodec: `org.jcodec:jcodec:0.2.5` + `org.jcodec:jcodec-javase:0.2.5` (pure Java, ~2 MB, no classifiers). Coverage is narrow: H.264 Main-profile decode, MPEG-1/2, ProRes, VP8 I-frames, containers MP4/MOV/MKV. **No HEVC, VP9, or AV1.** If the real footage is outside this set, JavaCV is forced.
 - **Add `maven-shade-plugin`** (the template has none) to produce an uber-jar containing the decode classes and natives while the LX/GLX deps stay out. For JavaCV: keep the `org/bytedeco/**/<platform>/` resource paths **verbatim** (do not relocate those packages, or JavaCPP's resource lookup breaks), and set `-Dorg.bytedeco.javacpp.cachedir.nosubdir=true` so JavaCPP extracts the dylibs correctly from a single uber-jar (it loads them as classpath resources and extracts to `~/.javacpp/cache`).
-- If JavaCV wins the spike, its FFmpeg natives are large, so build **per-OS/arch jars via Maven profiles** and have the user install the one matching their platform. Ship macOS arm64 first (the dev machine). JCodec would avoid this entirely (one small jar), a real factor in the decision.
+- If JavaCV wins the spike, its FFmpeg natives are large, so build **per-OS/arch jars via Maven profiles** and have the user install the one matching their platform. Ship macOS arm64 first (the dev machine). JCodec would avoid this entirely (one small jar), a real factor in the decision. Those profiles belong in the root pom, so one platform switch applies to every plugin at once.
 
-Resource layout (greenfield, these are files to create):
+### Repo layout
+
+The repo is a **Maven multi-module build**, one module per Chromatik content package. Chromatik discovers packages by scanning `~/Chromatik/Packages/*.jar` for a root `lx.package` file, so one jar is exactly one package and a second plugin cannot share the first one's module.
 
 ```
-pom.xml
-src/main/resources/lx.package
-src/main/java/<pkg>/VideoPattern.java        (public, auto-discovered)
-src/main/java/<pkg>/FrameSource.java  FileVideoSource.java  ScreenCaptureSource.java
-src/main/java/<pkg>/FramePipeline.java  PlaybackClock.java
-src/main/java/<pkg>/Projector.java  ProjectionParams.java  VideoFrame.java
-projects/demo.lxp                             (optional one-click demo)
+pom.xml                                       parent + aggregator, packaging=pom
+packages/chromatik-video/
+  pom.xml                                     ~15 lines: parent, artifactId, name, extra deps
+  src/main/resources/lx.package
+  src/main/java/<pkg>/VideoPattern.java       (public, auto-discovered)
+  src/main/java/<pkg>/FrameSource.java  FileVideoSource.java  ScreenCaptureSource.java
+  src/main/java/<pkg>/FramePipeline.java  PlaybackClock.java
+  src/main/java/<pkg>/Projector.java  ProjectionParams.java  VideoFrame.java
+  projects/demo.lxp                           (optional one-click demo)
 ```
 
-Package namespace: **`laserphile.chromatik.video`** (Laserphile brand; `laserphile.chromatik` is the umbrella for future sibling packages, `.video` is this one). This is the `<pkg>` in every path above.
+Everything shared lives in the root pom and is inherited: the compiler settings, the three `provided` LX dependencies, the `lx.package` resource filtering, the shade config, and the `install` profile. The decode stack sits in `dependencyManagement` only, so a future plugin that does no decoding does not inherit 22 MB of FFmpeg. Adding a plugin is covered in [`ADDING-A-PLUGIN.md`](ADDING-A-PLUGIN.md).
+
+`mvn package` and `mvn -Pinstall install` at the repo root build and install every plugin; add `-pl :chromatik-<name>` to target one.
+
+Package namespace: **`laserphile.chromatik.video`** (Laserphile brand; `laserphile.chromatik` is the umbrella for sibling packages, `.video` is this one). This is the `<pkg>` in every path above, and each module owns its own `laserphile.chromatik.*` subpackage.
+
+**No shared code module yet.** `Projector`, `ProjectionParams`, `VideoFrame` and `FrameSource` stay package-private inside the video module. Extracting a `chromatik-core` means making them public and designing an API against a single consumer; the second plugin is what will show which of them are genuinely reusable. The parent pom makes that extraction cheap when the time comes.
 
 ## Milestones
 

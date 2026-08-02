@@ -26,8 +26,9 @@
 ## Files touched
 
 - `Projector.java` (gamma/level/colourspace), `FileVideoSource.java`/`FramePipeline.java` (swscale, pooling, error handling)
-- `VideoPattern.java` (`workingResolution`), `pom.xml` (build profiles)
-- `projects/demo.lxp`, `README.md`
+- `VideoPattern.java` (`workingResolution`)
+- The **root** `pom.xml` for the per-OS/arch build profiles, so one platform switch covers every plugin. Shade filters for the uber-jar trim belong in `packages/chromatik-video/pom.xml`, since they're specific to the decode stack.
+- `packages/chromatik-video/projects/demo.lxp`, `README.md`
 
 ## Verification
 

@@ -20,7 +20,9 @@
 
 ## Files touched
 
-- `src/main/java/<pkg>/ScreenCaptureSource.java`
+All under `packages/chromatik-video/src/main/java/<pkg>/`.
+
+- `ScreenCaptureSource.java` (new)
 - `VideoPattern.java` (source param, transport gating), `FramePipeline.java` (live latest-frame path, source switching)
 
 ## Verification

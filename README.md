@@ -27,11 +27,13 @@ Chromatik ships an `ImagePattern` for still images. It has **no video player**. 
 
 ## 📦 What's in here
 
-| Package | Artifact | Category in Chromatik | What it does |
+| Module | Package | Category in Chromatik | What it does |
 |---|---|---|---|
-| `laserphile.chromatik.video` | `chromatik-video` | **Laserphile → Video** | Decodes a video file and projects it onto the model |
+| [`packages/chromatik-video`](packages/chromatik-video) | `laserphile.chromatik.video` | **Laserphile → Video** | Decodes a video file and projects it onto the model |
 
-The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` packages land alongside this one as they're built.
+A Maven multi-module build, one module per Chromatik content package. Chromatik discovers packages by scanning `~/Chromatik/Packages/*.jar` for a root `lx.package` file, so one jar is exactly one package and every plugin needs its own module. The root `pom.xml` is the parent: it holds the compiler settings, the `provided` LX dependencies, the `lx.package` filtering, the shade config, and the install profile, so a new module is a ~15-line pom.
+
+The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` packages land alongside this one as they're built, see [`docs/ADDING-A-PLUGIN.md`](docs/ADDING-A-PLUGIN.md).
 
 ## ✨ Features
 
@@ -50,11 +52,11 @@ The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` p
 |---|---|---|
 | **JDK** | 21 | [Temurin](https://adoptium.net/) recommended, to match Chromatik's own runtime |
 | **Maven** | 3.9+ | |
-| **Chromatik** | 1.2.1 | Pinned via `lx.version` in `pom.xml` |
+| **Chromatik** | 1.2.1 | Pinned via `lx.version` in the root `pom.xml` |
 | **Platform** | macOS arm64 | See the warning below |
 
 > [!WARNING]
-> **The build is currently macOS arm64 only.** `pom.xml` hardcodes `<native.classifier>macosx-arm64</native.classifier>`, so the FFmpeg native bundled into the jar only loads on Apple Silicon. Building for another platform means changing that one property to a classifier Bytedeco publishes (`linux-x86_64`, `windows-x86_64`, `macosx-x86_64`). Proper per-OS build profiles are [M5](#-roadmap).
+> **The build is currently macOS arm64 only.** The root `pom.xml` hardcodes `<native.classifier>macosx-arm64</native.classifier>`, so the FFmpeg native bundled into the jar only loads on Apple Silicon. Building for another platform means changing that one property to a classifier Bytedeco publishes (`linux-x86_64`, `windows-x86_64`, `macosx-x86_64`). Proper per-OS build profiles are [M5](#-roadmap), and living in the root pom means they'll apply to every plugin at once.
 
 <details>
 <summary><b>Setting up JDK 21 on macOS</b></summary>
@@ -85,10 +87,10 @@ mvn -version     # should report the Temurin 21 JAVA_HOME
 git clone https://github.com/moonbase-labs/chromatik-plugins.git
 cd chromatik-plugins
 
-# Build the uber-jar into target/
+# Build every plugin's uber-jar into packages/*/target/
 mvn package
 
-# Build and drop it into ~/Chromatik/Packages
+# Build them and drop them into ~/Chromatik/Packages
 mvn -Pinstall install
 ```
 
@@ -199,6 +201,8 @@ This is re-implemented from the documented behaviour of Chromatik's `ImagePatter
 <details>
 <summary><b>Source layout</b></summary>
 
+All under `packages/chromatik-video/src/main/java/laserphile/chromatik/video/`.
+
 | File | Thread | Role |
 |---|---|---|
 | `VideoPattern.java` | engine | Orchestrator. Owns the parameters, drives the clock, pipeline, and projector. The only public, auto-discovered class. |
@@ -226,11 +230,16 @@ Design decisions, open questions, and per-milestone detail live in [`docs/`](doc
 ## 🛠️ Development
 
 ```bash
-mvn package                # build the uber-jar
-mvn -Pinstall install      # build, then copy into ~/Chromatik/Packages
+mvn package                                  # build every plugin
+mvn -Pinstall install                        # build, then copy into ~/Chromatik/Packages
+
+mvn -pl :chromatik-video package             # just one plugin
+mvn -Pinstall install -pl :chromatik-video   # build and install just one
 ```
 
 Chromatik has to be **restarted** to pick up a rebuilt package. There's no hot reload for content packages.
+
+Adding a plugin is four files and one line in the root pom: [`docs/ADDING-A-PLUGIN.md`](docs/ADDING-A-PLUGIN.md).
 
 A few things worth knowing before you touch the code:
 
