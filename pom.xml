@@ -202,7 +202,17 @@
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <!--
+                                          Both spellings. Chromatik scans every entry in a package
+                                          jar and tries to load anything ending in .class, and a
+                                          module descriptor is not one: it comes back as
+                                          "not a class because access_flag ACC_MODULE is set",
+                                          with a stack trace, at every startup. Harmless, but it
+                                          is the first thing in the log and it looks like a fault.
+                                          A multi-release jar hides a second copy per version.
+                                        -->
                                         <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/*/module-info.class</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
