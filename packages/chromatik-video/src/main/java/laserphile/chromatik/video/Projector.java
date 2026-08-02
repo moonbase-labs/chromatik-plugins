@@ -36,22 +36,25 @@ final class Projector {
 
       final int sampled = sampleWrapped(argb, width, height, u, v, params, background);
 
-      colors[point.index] = applyLevel(sampled, params.level);
+      colors[point.index] = applyToneCurve(sampled, params);
     }
   }
 
-  /** Master brightness: scales the colour channels and leaves alpha (the CLEAR mode) alone. */
-  private static int applyLevel(int argb, double level) {
-    if (level >= 1) {
+  /**
+   * Master brightness and gamma, as one table lookup per channel. Alpha is left alone, since it
+   * carries the CLEAR background rather than any light.
+   */
+  private static int applyToneCurve(int argb, ProjectionParams params) {
+    if (params.toneCurveIsFlat) {
       return argb;
     }
 
-    final int alpha = argb & 0xff000000;
-    final int red = (int) (((argb >> 16) & 0xff) * level);
-    final int green = (int) (((argb >> 8) & 0xff) * level);
-    final int blue = (int) ((argb & 0xff) * level);
+    final int[] curve = params.toneCurve;
 
-    return alpha | (red << 16) | (green << 8) | blue;
+    return (argb & 0xff000000)
+      | (curve[(argb >> 16) & 0xff] << 16)
+      | (curve[(argb >> 8) & 0xff] << 8)
+      | curve[argb & 0xff];
   }
 
   /** Apply the wrap mode to (u, v), then sample; out-of-bounds under CLIP returns background. */

@@ -59,6 +59,14 @@ final class ProjectionControls {
     new EnumParameter<ProjectionParams.Interpolation>("Interp", ProjectionParams.Interpolation.BILINEAR)
       .setDescription("Nearest is blocky; bilinear is smoother");
   /**
+   * Calibration against the fixtures rather than a performance control, which is why it sits with
+   * the sampling controls rather than anywhere near a knob. It belongs here because it is about
+   * the LEDs, not the source: a video and a captured desktop want the same curve.
+   */
+  public final CompoundParameter gamma =
+    new CompoundParameter("Gamma", 1, 1, 3)
+      .setDescription("Pulls mid-tones down; around 2.2 undoes video's own brightness curve");
+  /**
    * Master brightness. In neither collection below, because it is the one projection control every
    * pattern wants on its first knob, ahead of anything the pattern itself contributes. Each pattern
    * registers it directly, first.
@@ -107,6 +115,7 @@ final class ProjectionControls {
     this.remainingParameters.add("wrap", this.wrapMode);
     this.remainingParameters.add("background", this.backgroundMode);
     this.remainingParameters.add("interpolation", this.interpolation);
+    this.remainingParameters.add("gamma", this.gamma);
   }
 
   /**
@@ -131,6 +140,7 @@ final class ProjectionControls {
     this.params.backgroundMode = this.backgroundMode.getEnum();
     this.params.interpolation = this.interpolation.getEnum();
     this.params.level = this.level.getValue();
+    this.params.gamma = this.gamma.getValue();
     this.params.recompute();
 
     this.projector.project(frame, this.params, model, colors);
