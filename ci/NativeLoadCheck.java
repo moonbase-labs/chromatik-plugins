@@ -3,6 +3,7 @@ import org.bytedeco.ffmpeg.global.avformat;
 import org.bytedeco.ffmpeg.global.avutil;
 import org.bytedeco.ffmpeg.global.swscale;
 import org.bytedeco.javacpp.Loader;
+import java.io.File;
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 
@@ -29,10 +30,20 @@ public class NativeLoadCheck {
   private static final int FRAMES_TO_DECODE = 10;
 
   /**
-   * A synthetic clip FFmpeg generates itself, so the check needs no video file. Decoding it
-   * proves the whole decode path works, not merely that the libraries loaded.
+   * A 2.7 KB H.264/MP4 clip, 10 frames of 64x48, committed alongside this file. Decoding it
+   * proves the whole path works, not merely that the libraries loaded, and H.264 in MP4 is what
+   * the plugin actually gets pointed at in the wild.
+   *
+   * <p>An earlier version generated its input from FFmpeg's synthetic {@code lavfi testsrc}
+   * instead, which needed no file. Bytedeco's Linux builds ship without the lavfi demuxer, so
+   * the check failed on Linux for a reason that had nothing to do with the jar. A fixture works
+   * on every platform and exercises only the decoders the plugin needs.
+   *
+   * <p>Regenerate with:
+   * {@code ffmpeg -f lavfi -i testsrc=size=64x48:rate=10:duration=1 -c:v libx264
+   * -pix_fmt yuv420p -preset veryslow -an ci/testclip.mp4}
    */
-  private static final String TEST_SOURCE = "testsrc=size=64x48:rate=10:duration=1";
+  private static final String TEST_CLIP = "ci/testclip.mp4";
 
   public static void main(String[] args) throws Exception {
     System.out.println("platform: " + Loader.Detector.getPlatform());
@@ -73,10 +84,15 @@ public class NativeLoadCheck {
   }
 
   private static void checkDecode() throws Exception {
+    final File clip = new File(TEST_CLIP);
+    if (!clip.isFile()) {
+      throw new IllegalStateException(
+        "run this from the repo root, so " + TEST_CLIP + " resolves");
+    }
+
     int decoded = 0;
 
-    try (FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(TEST_SOURCE)) {
-      grabber.setFormat("lavfi");
+    try (FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(clip)) {
       grabber.start();
 
       Frame frame;
