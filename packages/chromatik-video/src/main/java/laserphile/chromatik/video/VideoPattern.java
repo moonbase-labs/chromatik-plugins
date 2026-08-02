@@ -166,12 +166,13 @@ public class VideoPattern extends LXPattern {
       this.projection.scrollX,
       this.projection.scrollY,
       this.projection.yaw,
-      this.projection.pitch,
       this.projection.roll,
+      this.projection.gamma,
       // Past the eighth knob. Still mappable by hand, just not picked up by a surface. This order
       // matches the panel, so anything inserted here has to be inserted there too.
       this.projection.stretchX,
       this.projection.stretchY,
+      this.projection.pitch,
       this.projection.translateX,
       this.projection.translateY,
       this.projection.translateZ,

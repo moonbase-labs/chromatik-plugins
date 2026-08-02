@@ -204,14 +204,14 @@ Chromatik generates each panel from these automatically. They are listed in pane
 | `Scale` | Compound | `1` | 0.1 to 10 | Zoom, larger values zoom in |
 | `ScrollX` `ScrollY` | Compound | `0` | -1 to 1 | UV offset, animate for a pan |
 | `Yaw` | Compound | `0` | -180 to 180 | Rotation about the vertical axis |
-| `Pitch` | Compound | `0` | -180 to 180 | Rotation about the horizontal axis |
 | `Roll` | Compound | `0` | -180 to 180 | Rotation about the view axis |
-| `StretchX` `StretchY` | Compound | `1` | 0.1 to 10 | Per-axis stretch on top of `Scale` |
+| `Gamma` | Compound | `1` | 1 to 3 | Pulls mid-tones down. Around 2.2 undoes video's own brightness curve, which is what an LED usually wants |
+| `XScale` `YScale` | Compound | `1` | 0.1 to 10 | Per-axis stretch on top of `Scale` |
+| `Pitch` | Compound | `0` | -180 to 180 | Rotation about the horizontal axis |
 | `TransX` `TransY` `TransZ` | Compound | `0` | -1 to 1 | Shift the image on each axis |
 | `Wrap` | Enum | `CLAMP` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
 | `Background` | Enum | `BLACK` | `BLACK` `CLEAR` | Colour for points rejected by `CLIP` |
 | `Interp` | Enum | `BILINEAR` | `NEAREST` `BILINEAR` | `NEAREST` is blocky, `BILINEAR` is smoother |
-| `Gamma` | Compound | `1` | 1 to 3 | Pulls mid-tones down. Around 2.2 undoes video's own brightness curve, which is what an LED usually wants |
 | `Position` | Compound | `0` | 0 to 1 | Playhead. Follows playback, and seeks when you drag it |
 | `Play` | Boolean | `on` | | Run the playhead |
 | `Loop` | Boolean | `on` | | Start again on reaching the end |
@@ -232,14 +232,16 @@ The same projection controls, minus everything that needs a timeline. `Speed`, `
 | `Level` | Compound | `1` | 0 to 1 | Master brightness |
 | `Scale` | Compound | `1` | 0.1 to 10 | Zoom, larger values zoom in |
 | `ScrollX` `ScrollY` | Compound | `0` | -1 to 1 | UV offset. With `Scale`, this is how you crop into part of the desktop |
-| `Yaw` `Pitch` `Roll` | Compound | `0` | -180 to 180 | Rotation about each axis |
-| `StretchX` `StretchY` | Compound | `1` | 0.1 to 10 | Per-axis stretch on top of `Scale`. `StretchX` is the one to reach for fitting a 16:10 desktop |
+| `Yaw` `Roll` | Compound | `0` | -180 to 180 | Rotation about the vertical and the view axis |
+| `Gamma` | Compound | `1` | 1 to 3 | Pulls mid-tones down. Around 2.2 undoes the display's own brightness curve |
+| `XScale` | Compound | `1` | 0.1 to 10 | Horizontal stretch on top of `Scale`. The one to reach for fitting a 16:10 desktop |
 | `Freeze` | Boolean | `off` | | Hold the current frame instead of following the screen |
+| `YScale` | Compound | `1` | 0.1 to 10 | Vertical stretch on top of `Scale` |
+| `Pitch` | Compound | `0` | -180 to 180 | Rotation about the horizontal axis |
 | `TransX` `TransY` `TransZ` | Compound | `0` | -1 to 1 | Shift the image on each axis |
 | `Wrap` | Enum | `CLAMP` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
 | `Background` | Enum | `BLACK` | `BLACK` `CLEAR` | Colour for points rejected by `CLIP` |
 | `Interp` | Enum | `BILINEAR` | `NEAREST` `BILINEAR` | `NEAREST` is blocky, `BILINEAR` is smoother |
-| `Gamma` | Compound | `1` | 1 to 3 | Pulls mid-tones down. Around 2.2 undoes the display's own brightness curve |
 | `Screen` | Discrete | `0` | 0 to 3 | Which display to capture. Ignored on Windows, which captures the whole desktop |
 | `Cursor` | Boolean | `on` | | Include the mouse pointer |
 | `Res` | Discrete | `Auto` | `128` `256` `384` `512` `Auto` | Longest edge to capture at. `Auto` follows the model's point count. Never enlarges |
@@ -254,10 +256,12 @@ A MIDI surface binds its eight device knobs to the first eight of the pattern's 
 
 | Knob | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
-| **Video** | `Level` | `Speed` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Pitch` | `Roll` |
-| **Screen Capture** | `Level` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Pitch` | `Roll` | `StretchX` |
+| **Video** | `Level` | `Speed` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Roll` | `Gamma` |
+| **Screen Capture** | `Level` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Roll` | `Gamma` | `XScale` |
 
-The two line up except at knob 2, where Screen Capture has no `Speed` to spend the slot on, so everything shifts up one and `StretchX` reaches the row.
+The two line up except at knob 2, where Screen Capture has no `Speed` to spend the slot on, so everything shifts up one and `XScale` reaches the row.
+
+`Pitch` is the rotation left off the knobs. A projection sweeps it least of the three, and the freed slot goes to `Gamma`, which is what you reach for once the video is on real LEDs. `Pitch` is still on the panel and still mappable by hand.
 
 The surface order carries on down the panel from there, so the *n*th control you read is the *n*th a surface sees.
 

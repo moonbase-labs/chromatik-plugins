@@ -39,10 +39,17 @@ public final class ProjectionControls {
 
   public final CompoundParameter scale =
     new CompoundParameter("Scale", 1, 0.1, 10).setDescription("Zoom: larger values zoom in");
+  /**
+   * The two per-axis stretches, labelled with the axis first.
+   *
+   * A knob is 40 pixels wide and its label is clipped to fit, which is about six characters, so a
+   * label of "StretchX" reaches the knob as "Stretc" and the pair becomes indistinguishable. The
+   * axis letter leads so that whatever survives the clip still says which axis it is.
+   */
   public final CompoundParameter stretchX =
-    new CompoundParameter("StretchX", 1, 0.1, 10).setDescription("Horizontal stretch");
+    new CompoundParameter("XScale", 1, 0.1, 10).setDescription("Horizontal stretch, on top of Scale");
   public final CompoundParameter stretchY =
-    new CompoundParameter("StretchY", 1, 0.1, 10).setDescription("Vertical stretch");
+    new CompoundParameter("YScale", 1, 0.1, 10).setDescription("Vertical stretch, on top of Scale");
 
   public final CompoundParameter scrollX =
     new CompoundParameter("ScrollX", 0, -1, 1).setDescription("Horizontal scroll offset");
@@ -59,9 +66,9 @@ public final class ProjectionControls {
     new EnumParameter<ProjectionParams.Interpolation>("Interp", ProjectionParams.Interpolation.BILINEAR)
       .setDescription("Nearest is blocky; bilinear is smoother");
   /**
-   * Calibration against the fixtures rather than a performance control, which is why it sits with
-   * the sampling controls rather than anywhere near a knob. It belongs here because it is about
-   * the LEDs, not the source: a video and a captured desktop want the same curve.
+   * Calibration against the fixtures, and worth a knob because a rig that is lit differently from
+   * one song to the next wants it moved by hand. It is shared because it is about the LEDs, not the
+   * source: a video and a captured desktop want the same curve.
    */
   public final CompoundParameter gamma =
     new CompoundParameter("Gamma", 1, 1, 3)
@@ -79,8 +86,12 @@ public final class ProjectionControls {
    *
    * A pattern registers this straight after its own knob-worthy controls. Where the eighth knob
    * falls inside it therefore depends on what else that pattern put in front: Screen Capture spends
-   * only Level, so all seven are on knobs, whilst Video also spends Speed, which pushes StretchX
-   * one past the knob row and onto the panel below it.
+   * only Level, so all seven are on knobs, whilst Video also spends Speed, which pushes XScale one
+   * past the knob row and onto the panel below it, leaving Gamma as its eighth knob.
+   *
+   * Pitch is not here. Of the three rotations it is the one a projection least often sweeps, and
+   * leaving it off frees the slot for Gamma, which every rig wants to reach for once its LEDs are
+   * in front of it.
    */
   public final LXParameter.Collection knobParameters = new LXParameter.Collection();
 
@@ -94,8 +105,10 @@ public final class ProjectionControls {
     // Two things ride on these two blocks. The insertion order is the order the controls appear in
     // the panel, because a collection keeps what it is given in order. And each key becomes the
     // parameter's saved path, so these strings are what a saved project stores: changing one
-    // silently drops that control's saved value the next time the project is opened. Note that
-    // three keys deliberately differ from their field names.
+    // silently drops that control's saved value the next time the project is opened. Note that two
+    // keys deliberately differ from their field names, and that a control keeps its key when it
+    // moves between the two collections, so moving one reorders the panel without disturbing
+    // anything already saved.
     //
     // They are two collections rather than one so that a pattern can put a control of its own at
     // the seam, which is where its knob row ends. Screen Capture puts Freeze there. Video puts
@@ -104,18 +117,18 @@ public final class ProjectionControls {
     this.knobParameters.add("scrollX", this.scrollX);
     this.knobParameters.add("scrollY", this.scrollY);
     this.knobParameters.add("yaw", this.yaw);
-    this.knobParameters.add("pitch", this.pitch);
     this.knobParameters.add("roll", this.roll);
+    this.knobParameters.add("gamma", this.gamma);
     this.knobParameters.add("stretchX", this.stretchX);
 
     this.remainingParameters.add("stretchY", this.stretchY);
+    this.remainingParameters.add("pitch", this.pitch);
     this.remainingParameters.add("translateX", this.translateX);
     this.remainingParameters.add("translateY", this.translateY);
     this.remainingParameters.add("translateZ", this.translateZ);
     this.remainingParameters.add("wrap", this.wrapMode);
     this.remainingParameters.add("background", this.backgroundMode);
     this.remainingParameters.add("interpolation", this.interpolation);
-    this.remainingParameters.add("gamma", this.gamma);
   }
 
   /**

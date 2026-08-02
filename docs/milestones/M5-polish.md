@@ -47,7 +47,7 @@ Changed: `VideoPattern.java` (`Gamma`, `Res`, `onModelChanged`, background when 
 
 - **`workingResolution` generalises M4's screen-capture cap.** The fixed 480px ceiling on `ScreenCaptureSource` became `WorkingResolution`, shared by both sources. The constraint it was written around is unchanged and is now documented on `FrameSource.open`: the size has to be asked for after the device is open and before the first grab, which is why it is an argument to opening rather than a setting, and why changing it opens the source again. Nothing is ever enlarged.
 
-- **`Res` and `Gamma` sit in different places on the panel.** `Gamma` goes next to `Interp` with the sampling and colour controls and keeps its matching place on a control surface. `Res` joins `Source`, `Screen` and `CapFps` in the tail that is held back from the surface, because like them it tears down the current source and opens another.
+- **`Res` and `Gamma` sit in different places on the panel.** `Gamma` is on a knob, Video's eighth and Screen Capture's seventh, because a rig wants it by hand the moment its LEDs are lit; `Pitch` is the rotation that gave up the slot. `Res` joins `Screen` and `Cursor` in the tail that is held back from the surface, because like them it tears down the current source and opens another.
 
 - **A decode failure is now survivable.** The catch sat outside the decode loop, so one damaged frame ended playback permanently. Failures are counted and retried, the first of a run is logged, and only ten in a row without a good frame is taken as the source having gone. Live capture gets the same treatment, since a desktop sleeping or changing resolution surfaces as a failed grab.
 
