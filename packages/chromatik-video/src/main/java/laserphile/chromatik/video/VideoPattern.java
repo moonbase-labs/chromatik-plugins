@@ -183,15 +183,40 @@ public class VideoPattern extends LXPattern {
       this::onFileChosen);
   }
 
-  /** Start the chooser at the current video, falling back to the Chromatik media folder. */
+  /**
+   * Where the chooser opens: the folder holding the current video, else the Chromatik media
+   * folder.
+   *
+   * The dialog reads whatever follows the final separator as a file name and opens the folder
+   * above it, so a folder has to be handed over with its trailing separator kept.
+   */
   private String chooserStartPath() {
-    final String resolved = resolvePath(this.fileName.getString());
+    final File currentFolder = parentFolderOf(resolvePath(this.fileName.getString()));
 
-    if (resolved != null && new File(resolved).exists()) {
-      return resolved;
+    if (currentFolder != null) {
+      return asFolderPath(currentFolder.getAbsolutePath());
     }
 
-    return this.lx.getMediaPath();
+    return asFolderPath(this.lx.getMediaPath());
+  }
+
+  /** The folder holding the given file, or null when that folder is not on disk. */
+  private static File parentFolderOf(String path) {
+    if (path == null) {
+      return null;
+    }
+
+    final File parent = new File(path).getParentFile();
+
+    return (parent != null && parent.isDirectory()) ? parent : null;
+  }
+
+  private static String asFolderPath(String folder) {
+    if (folder == null || folder.isBlank()) {
+      return folder;
+    }
+
+    return folder.endsWith(File.separator) ? folder : folder.concat(File.separator);
   }
 
   private void onFileChosen(String chosenPath) {
