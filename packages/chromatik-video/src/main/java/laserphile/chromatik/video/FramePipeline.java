@@ -65,14 +65,6 @@ final class FramePipeline {
   private volatile boolean publishedAnyFrame = false;
   private volatile long durationMs = FrameSource.DURATION_UNKNOWN;
 
-  /**
-   * Whether the current source is live, and so which buffer the engine should be reading. Set from
-   * the source itself at start, before any thread exists, and cleared by stop(). It is what stops a
-   * frame left behind by an abandoned capture thread from being served to a file source that has
-   * since taken over.
-   */
-  private volatile boolean live = false;
-
   private Thread thread;
 
   // Engine-thread state, never touched by the decode thread.
@@ -87,9 +79,12 @@ final class FramePipeline {
 
     final int epoch = this.startEpoch.incrementAndGet();
 
-    this.live = source.isLive();
     this.running = true;
-    this.thread = new Thread(() -> openAndRun(source, epoch), "laserphile-decode");
+
+    // Named after the source because two patterns can be running at once, and a thread dump is the
+    // only way to tell which of them is the one wedged in a capture that never opened.
+    this.thread =
+      new Thread(() -> openAndRun(source, epoch), String.format("laserphile-decode %s", source));
     this.thread.setDaemon(true);
     this.thread.start();
   }
@@ -242,14 +237,10 @@ final class FramePipeline {
    * nothing newer is due. Non-blocking, and never steps backwards to an older frame. Returns
    * null only before the first frame of a file has been decoded.
    *
-   * A live source ignores the time argument entirely and answers with whatever was captured most
-   * recently, because that is the only frame it has and the only one worth showing.
+   * Pairs with a recorded source. A live source fills the other buffer, so calling this on one
+   * returns null for as long as it runs rather than failing outright.
    */
   VideoFrame frameFor(long streamTimeMs) {
-    if (this.live) {
-      return this.latestLiveFrame.get();
-    }
-
     VideoFrame head;
 
     while ((head = this.ring.peek()) != null) {
@@ -275,6 +266,16 @@ final class FramePipeline {
     }
 
     return this.current;
+  }
+
+  /**
+   * Whatever was captured most recently, or null before the first frame arrives.
+   *
+   * Pairs with a live source. There is no time argument because a live source has no timeline: the
+   * newest frame is the only one it holds and the only one worth showing.
+   */
+  VideoFrame latestFrame() {
+    return this.latestLiveFrame.get();
   }
 
   /** Post a seek for the decode thread. Repeated calls coalesce to the newest target. */
@@ -330,7 +331,6 @@ final class FramePipeline {
       this.thread = null;
     }
 
-    this.live = false;
     this.ring.clear();
     this.latestLiveFrame.set(null);
     this.seekRequest.set(null);
