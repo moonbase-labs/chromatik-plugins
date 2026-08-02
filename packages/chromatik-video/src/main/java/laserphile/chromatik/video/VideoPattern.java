@@ -93,48 +93,11 @@ public class VideoPattern extends LXPattern {
   public final TriggerParameter restart =
     new TriggerParameter("Restart").setDescription("Jump back to the start and play");
 
-  public final CompoundParameter yaw =
-    new CompoundParameter("Yaw", 0, -180, 180).setDescription("Rotation about the vertical axis");
-  public final CompoundParameter pitch =
-    new CompoundParameter("Pitch", 0, -180, 180).setDescription("Rotation about the horizontal axis");
-  public final CompoundParameter roll =
-    new CompoundParameter("Roll", 0, -180, 180).setDescription("Rotation about the view axis");
-
-  public final CompoundParameter translateX =
-    new CompoundParameter("TransX", 0, -1, 1).setDescription("Shift the image horizontally");
-  public final CompoundParameter translateY =
-    new CompoundParameter("TransY", 0, -1, 1).setDescription("Shift the image vertically");
-  public final CompoundParameter translateZ =
-    new CompoundParameter("TransZ", 0, -1, 1).setDescription("Shift the image in depth");
-
-  public final CompoundParameter scale =
-    new CompoundParameter("Scale", 1, 0.1, 10).setDescription("Zoom: larger values zoom in");
-  public final CompoundParameter stretchX =
-    new CompoundParameter("StretchX", 1, 0.1, 10).setDescription("Horizontal stretch");
-  public final CompoundParameter stretchY =
-    new CompoundParameter("StretchY", 1, 0.1, 10).setDescription("Vertical stretch");
-
-  public final CompoundParameter scrollX =
-    new CompoundParameter("ScrollX", 0, -1, 1).setDescription("Horizontal scroll offset");
-  public final CompoundParameter scrollY =
-    new CompoundParameter("ScrollY", 0, -1, 1).setDescription("Vertical scroll offset");
-
-  public final EnumParameter<ProjectionParams.WrapMode> wrapMode =
-    new EnumParameter<ProjectionParams.WrapMode>("Wrap", ProjectionParams.WrapMode.CLAMP)
-      .setDescription("How to sample outside the image bounds");
-  public final EnumParameter<ProjectionParams.BackgroundMode> backgroundMode =
-    new EnumParameter<ProjectionParams.BackgroundMode>("Background", ProjectionParams.BackgroundMode.BLACK)
-      .setDescription("Colour for points outside the image (Clip mode)");
-  public final EnumParameter<ProjectionParams.Interpolation> interpolation =
-    new EnumParameter<ProjectionParams.Interpolation>("Interp", ProjectionParams.Interpolation.BILINEAR)
-      .setDescription("Nearest is blocky; bilinear is smoother");
-  public final CompoundParameter level =
-    new CompoundParameter("Level", 1, 0, 1).setDescription("Master brightness");
+  /** Orientation, scale, wrapping, sampling and brightness, shared with the other patterns. */
+  public final ProjectionControls projection = new ProjectionControls();
 
   private final FramePipeline pipeline = new FramePipeline();
   private final PlaybackClock clock = new PlaybackClock();
-  private final Projector projector = new Projector();
-  private final ProjectionParams params = new ProjectionParams();
 
   // Parameter listeners can fire on the UI thread, so they only raise a flag; run() acts on it.
   private volatile boolean openRequested = false;
@@ -157,25 +120,14 @@ public class VideoPattern extends LXPattern {
     // The panel draws the parameters in the order they are added here, filling a row at a time,
     // and the remote-control list below repeats that order. So the panel reads left to right in
     // the same order a control surface sees it, starting with the eight knobs.
-    addParameter("level", this.level);
+    addParameter("level", this.projection.level);
     addParameter("speed", this.speed);
-    addParameter("scale", this.scale);
-    addParameter("scrollX", this.scrollX);
-    addParameter("scrollY", this.scrollY);
-    addParameter("yaw", this.yaw);
-    addParameter("pitch", this.pitch);
-    addParameter("roll", this.roll);
+    // Speed has taken a knob, so the last of these lands one past the knob row.
+    addParameters(this.projection.knobParameters);
+
+    addParameters(this.projection.remainingParameters);
 
     addParameter("position", this.position);
-    addParameter("stretchX", this.stretchX);
-    addParameter("stretchY", this.stretchY);
-    addParameter("translateX", this.translateX);
-    addParameter("translateY", this.translateY);
-    addParameter("translateZ", this.translateZ);
-    addParameter("wrap", this.wrapMode);
-    addParameter("background", this.backgroundMode);
-    addParameter("interpolation", this.interpolation);
-
     addParameter("play", this.play);
     addParameter("loop", this.loop);
     addParameter("restart", this.restart);
@@ -196,24 +148,25 @@ public class VideoPattern extends LXPattern {
       // A MIDI surface binds its eight device knobs to the first eight entries here, so all eight
       // are continuous controls. An APC40 cannot page past its eighth knob, so a button or a
       // trigger in this range costs a knob outright.
-      this.level,
+      this.projection.level,
       this.speed,
-      this.scale,
-      this.scrollX,
-      this.scrollY,
-      this.yaw,
-      this.pitch,
-      this.roll,
-      // Past the eighth knob. Still mappable by hand, just not picked up by a surface.
+      this.projection.scale,
+      this.projection.scrollX,
+      this.projection.scrollY,
+      this.projection.yaw,
+      this.projection.pitch,
+      this.projection.roll,
+      // Past the eighth knob. Still mappable by hand, just not picked up by a surface. This order
+      // matches the panel, so anything inserted here has to be inserted there too.
+      this.projection.stretchX,
+      this.projection.stretchY,
+      this.projection.translateX,
+      this.projection.translateY,
+      this.projection.translateZ,
+      this.projection.wrapMode,
+      this.projection.backgroundMode,
+      this.projection.interpolation,
       this.position,
-      this.stretchX,
-      this.stretchY,
-      this.translateX,
-      this.translateY,
-      this.translateZ,
-      this.wrapMode,
-      this.backgroundMode,
-      this.interpolation,
       this.play,
       this.loop,
       this.restart);
@@ -409,24 +362,7 @@ public class VideoPattern extends LXPattern {
 
     updatePlayheadReadout(frame);
 
-    this.params.yaw = this.yaw.getValue();
-    this.params.pitch = this.pitch.getValue();
-    this.params.roll = this.roll.getValue();
-    this.params.translateX = this.translateX.getValue();
-    this.params.translateY = this.translateY.getValue();
-    this.params.translateZ = this.translateZ.getValue();
-    this.params.scale = this.scale.getValue();
-    this.params.stretchX = this.stretchX.getValue();
-    this.params.stretchY = this.stretchY.getValue();
-    this.params.scrollX = this.scrollX.getValue();
-    this.params.scrollY = this.scrollY.getValue();
-    this.params.wrapMode = this.wrapMode.getEnum();
-    this.params.backgroundMode = this.backgroundMode.getEnum();
-    this.params.interpolation = this.interpolation.getEnum();
-    this.params.level = this.level.getValue();
-    this.params.recompute();
-
-    this.projector.project(frame, this.params, this.model, this.colors);
+    this.projection.project(frame, this.model, this.colors);
   }
 
   /**
