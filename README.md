@@ -31,20 +31,29 @@ Chromatik ships an `ImagePattern` for still images. It has **no video player**. 
 
 No build tools required. You need [Chromatik](https://chromatik.co/) and nothing else.
 
-1. **Download** the file for your computer from the [latest release](https://github.com/moonbase-labs/chromatik-plugins/releases/latest).
+Two files: **Core**, which carries the video engine both patterns share, plus whichever pattern you want.
 
-   | Your computer | File |
+1. **Download** from the [latest release](https://github.com/moonbase-labs/chromatik-plugins/releases/latest): the Core file for your computer, and one or both patterns.
+
+   | | File |
    |---|---|
-   | **Mac** (any, Apple Silicon or Intel) | `chromatik-video-<version>-macos.jar` |
-   | **Windows** | `chromatik-video-<version>-windows.jar` |
-   | Linux (Intel/AMD) | `chromatik-video-<version>-linux-x86_64.jar` |
-   | Linux (ARM, e.g. Raspberry Pi) | `chromatik-video-<version>-linux-arm64.jar` |
+   | **Core**, Mac (any, Apple Silicon or Intel) | `chromatik-core-<version>-macos.jar` |
+   | **Core**, Windows | `chromatik-core-<version>-windows.jar` |
+   | **Core**, Linux (Intel/AMD) | `chromatik-core-<version>-linux-x86_64.jar` |
+   | **Core**, Linux (ARM, e.g. Raspberry Pi) | `chromatik-core-<version>-linux-arm64.jar` |
+   | **Video**, plays a file | `chromatik-video-<version>.jar` |
+   | **Screen Capture**, mirrors the desktop | `chromatik-screen-<version>.jar` |
 
-2. **Drag it onto the Chromatik window.** Chromatik installs it for you.
+2. **Drag each onto the Chromatik window.** Chromatik installs them for you.
 3. In the **CONTENT** tab, click **Reload Package Content**.
-4. Add a pattern to a channel: category **Laserphile**, pattern **Video**. Click **Browse** and pick a file.
+4. Add a pattern to a channel: category **Laserphile**, pattern **Video** or **Screen Capture**.
 
-The Mac download carries both Apple Silicon and Intel builds, so there's nothing to check first.
+The Mac Core download carries both Apple Silicon and Intel builds, so there's nothing to check first. The pattern files are identical on every platform.
+
+Chromatik has no way to express that one package needs another, so a pattern installed without Core will list itself and then refuse to load, saying which package is missing. Install Core and restart.
+
+> [!IMPORTANT]
+> **Upgrading from v0.1.0?** Delete `chromatik-video-0.1.0-*.jar` from your packages folder first. That release was a single jar carrying everything, so it isn't replaced by any of the files above: it sits alongside them, and Chromatik loads both, giving two packages of the same name and a duplicate of every class. Saved projects are unaffected, since the pattern's name and controls are unchanged.
 
 ### Try it without building a model
 
@@ -82,11 +91,15 @@ Every release is loaded on real hardware of each platform before it ships, so th
 
 | Module | Package | Category in Chromatik | What it does |
 |---|---|---|---|
-| [`packages/chromatik-video`](packages/chromatik-video) | `laserphile.chromatik.video` | **Laserphile → Video**, **Laserphile → Screen Capture** | Projects a video file, or the live desktop, onto the model |
+| [`packages/chromatik-core`](packages/chromatik-core) | `laserphile.chromatik.core` | no patterns of its own | The projection stage, the frame pipeline, and the bundled FFmpeg decode stack |
+| [`packages/chromatik-video`](packages/chromatik-video) | `laserphile.chromatik.video` | **Laserphile → Video** | Plays a video file onto the model |
+| [`packages/chromatik-screen`](packages/chromatik-screen) | `laserphile.chromatik.screen` | **Laserphile → Screen Capture** | Puts the live desktop onto the model |
 
 A Maven multi-module build, one module per Chromatik content package. Chromatik discovers packages by scanning `~/Chromatik/Packages/*.jar` for a root `lx.package` file, so one jar is exactly one package and every plugin needs its own module. The root `pom.xml` is the parent: it holds the compiler settings, the `provided` LX dependencies, the `lx.package` filtering, the shade config, and the install profile, so a new module is a ~15-line pom.
 
-The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` packages land alongside this one as they're built, see [`docs/ADDING-A-PLUGIN.md`](docs/ADDING-A-PLUGIN.md).
+**Why a core package rather than a library each plugin bundles.** Chromatik hands every jar in its packages folder to one shared class loader, and registers every public class it finds against the package that supplied it, logging an error for any name it has already seen. That isn't limited to patterns: 328 of the 332 classes it registers are `org.bytedeco`. Two plugins each carrying FFmpeg would mean 328 errors the moment both were installed, and a second 43 MB download. So the decode stack lives in one jar and the plugins take it at `provided` scope, which is why they weigh 12 KB. The same shared class loader is what lets them find it at runtime.
+
+The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` packages land alongside these as they're built, see [`docs/ADDING-A-PLUGIN.md`](docs/ADDING-A-PLUGIN.md).
 
 ## ✨ Features
 
@@ -161,12 +174,15 @@ mvn package -Pdist-linux-x86_64
 mvn package -Pdist-linux-arm64
 ```
 
-Each produces one jar named for its platform. There's no cross-compilation involved, the FFmpeg native is an ordinary Maven dependency, so any machine can build any target.
+Only `chromatik-core` varies by platform, so a profile changes that jar and leaves the two pattern jars alone. There's no cross-compilation involved, the FFmpeg native is an ordinary Maven dependency, so any machine can build any target.
 
-Check a jar before shipping it. This loads its bundled natives and decodes ten frames, and is the same gate [CI](.github/workflows/ci.yml) runs on real hardware of every platform:
+Check the jars before shipping them. The core jar goes on the classpath, because it has the natives; the pattern jars are arguments, so each is opened and checked in its own right rather than whichever the classpath happened to reach first. Same gate [CI](.github/workflows/ci.yml) runs on real hardware of every platform:
 
 ```bash
-java -cp packages/chromatik-video/target/chromatik-video-*-macos.jar ci/NativeLoadCheck.java
+java -cp packages/chromatik-core/target/chromatik-core-*-macos.jar \
+     ci/NativeLoadCheck.java \
+     packages/chromatik-video/target/chromatik-video-*.jar \
+     packages/chromatik-screen/target/chromatik-screen-*.jar
 ```
 
 > [!TIP]
@@ -316,21 +332,28 @@ This is re-implemented from the documented behaviour of Chromatik's `ImagePatter
 <details>
 <summary><b>Source layout</b></summary>
 
-All under `packages/chromatik-video/src/main/java/laserphile/chromatik/video/`.
+**`packages/chromatik-core/src/main/java/laserphile/chromatik/core/`**, shared by every plugin and public only where a plugin actually reaches it:
 
 | File | Thread | Role |
 |---|---|---|
-| `VideoPattern.java` | engine | Orchestrator. Owns the parameters, drives the clock, pipeline, and projector. The only public, auto-discovered class. |
 | `FrameSource.java` | decode | Interface. The seam that lets a file and a live screen share one pipeline and one projector. |
-| `FileVideoSource.java` | decode | Wraps `FFmpegFrameGrabber`. Video track only, so the audio is never decoded or seeked. |
-| `ScreenCaptureSource.java` | capture | The desktop through FFmpeg's per-OS capture device. Live, no timeline, resolution capped. |
-| `ScreenCapturePattern.java` | engine | The live desktop. Public and auto-discovered, same as `VideoPattern`. |
-| `ProjectionControls.java` | engine | The 15 projection controls both patterns share, plus the snapshot-and-project call. |
 | `FramePipeline.java` | both | Owns the decode thread and the buffer: a ring for a file, one slot for a live source. Idempotent start/stop with a bounded join. |
-| `PlaybackClock.java` | engine | The playhead. Pure state: play, speed, and the pending seek target, no I/O. |
 | `VideoFrame.java` | both | A decoded frame plus its place on the timeline. |
-| `Projector.java` | engine | The per-point UV projection and sampling loop. |
-| `ProjectionParams.java` | engine | Per-frame snapshot of the controls, with the rotation matrix precomputed. |
+| `ProjectionControls.java` | engine | The 16 projection controls every pattern shares, plus the snapshot-and-project call. |
+| `ProjectionParams.java` | engine | Per-frame snapshot of the controls, with the rotation matrix and the tone curve precomputed. |
+| `Projector.java` | engine | The per-point UV projection and sampling loop. Package-private: `ProjectionControls` is its only caller. |
+| `ColorSpaceCorrection.java` | decode | Undoes the decoder's fixed BT.601 conversion on high-definition footage. |
+| `WorkingResolution.java` | decode | How big to decode, and how to make a grabber produce that size. |
+
+**`packages/chromatik-video/…/video/`** and **`packages/chromatik-screen/…/screen/`**, one pattern each:
+
+| File | Thread | Role |
+|---|---|---|
+| `VideoPattern.java` | engine | Orchestrator for file playback. Owns the transport, drives the clock and pipeline. |
+| `FileVideoSource.java` | decode | Wraps `FFmpegFrameGrabber`. Video track only, so the audio is never decoded or seeked. |
+| `PlaybackClock.java` | engine | The playhead. Pure state: play, speed, and the pending seek target, no I/O. |
+| `ScreenCapturePattern.java` | engine | Orchestrator for the live desktop. No transport, because there is no timeline. |
+| `ScreenCaptureSource.java` | capture | The desktop through FFmpeg's per-OS capture device. Live, no timeline. |
 
 </details>
 
@@ -348,12 +371,14 @@ Design decisions, open questions, and per-milestone detail live in [`docs/`](doc
 ## 🛠️ Development
 
 ```bash
-mvn package                                  # build every plugin
-mvn -Pinstall install                        # build, then copy into ~/Chromatik/Packages
+mvn package                                     # build core and every plugin
+mvn -Pinstall install                           # build, then copy into ~/Chromatik/Packages
 
-mvn -pl :chromatik-video package             # just one plugin
-mvn -Pinstall install -pl :chromatik-video   # build and install just one
+mvn -pl :chromatik-video -am package            # just one plugin, and the core it needs
+mvn -Pinstall install -pl :chromatik-video -am  # build and install both
 ```
+
+`-am` ("also make") is not optional for a plugin: it pulls `chromatik-core` into the same reactor, and without it Maven cannot resolve the dependency unless a matching core is already in `~/.m2`. Installing a plugin without its core into `~/Chromatik/Packages` gets you a pattern that lists itself and then refuses to load.
 
 Chromatik reloads a rebuilt package from the **CONTENT** tab: **Reload Package Content**, or leave **Auto-Reload Packages** on.
 

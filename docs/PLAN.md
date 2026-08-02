@@ -155,17 +155,29 @@ The repo is a **Maven multi-module build**, one module per Chromatik content pac
 pom.xml                                       parent + aggregator, packaging=pom
 .github/workflows/ci.yml                      build, per-platform verify, tag-triggered release
 .github/release-notes.md                      release body template
-ci/NativeLoadCheck.java                       the per-platform release gate
-packages/chromatik-video/
-  pom.xml                                     parent, artifactId, name, deps, dist-* profiles
-  src/main/resources/lx.package
-  src/main/java/<pkg>/VideoPattern.java  ScreenCapturePattern.java   (public, auto-discovered)
-  src/main/java/<pkg>/FrameSource.java  FileVideoSource.java  ScreenCaptureSource.java
-  src/main/java/<pkg>/FramePipeline.java  PlaybackClock.java  ProjectionControls.java
-  src/main/java/<pkg>/Projector.java  ProjectionParams.java  VideoFrame.java
+ci/NativeLoadCheck.java                       release gate: core on the classpath, plugins as args
+packages/chromatik-core/                      the shared runtime, one jar per platform
+  pom.xml                                     javacv + exclusions, shade filters, dist-* profiles
+  src/main/resources/lx.package               a real package, no patterns and no mediaDir
+  src/main/java/<core>/FrameSource.java  FramePipeline.java  VideoFrame.java
+  src/main/java/<core>/ProjectionControls.java  ProjectionParams.java  Projector.java
+  src/main/java/<core>/ColorSpaceCorrection.java  WorkingResolution.java
+packages/chromatik-video/                     one jar, platform-independent, ~12 KB
+  pom.xml                                     chromatik-core + javacv, both provided
+  src/main/resources/lx.package               mediaDir: LaserphileVideo
+  src/main/java/<video>/VideoPattern.java     (public, auto-discovered)
+  src/main/java/<video>/FileVideoSource.java  PlaybackClock.java
   projects/demo.lxp                           one-click demo: a grid plus a Video pattern
   projects/demo-bars.mp4                      its clip, and the colour-measurement fixture
+packages/chromatik-screen/                    one jar, platform-independent, ~11 KB
+  pom.xml                                     same shape as chromatik-video
+  src/main/resources/lx.package
+  src/main/java/<screen>/ScreenCapturePattern.java   (public, auto-discovered)
+  src/main/java/<screen>/ScreenCaptureSource.java
 ```
+
+`<core>`, `<video>` and `<screen>` are `laserphile/chromatik/{core,video,screen}`. `VideoPattern` keeps its
+package because a saved project stores the pattern's class name and v0.1.0 shipped it.
 
 Everything shared lives in the root pom and is inherited: the compiler settings, the three `provided` LX dependencies, the `lx.package` resource filtering, the shade config, and the `install` profile. The decode stack sits in `dependencyManagement` only, so a future plugin that does no decoding does not inherit 27 MB of FFmpeg. Adding a plugin is covered in [`ADDING-A-PLUGIN.md`](ADDING-A-PLUGIN.md).
 
@@ -194,7 +206,9 @@ For installers, Chromatik takes a jar dragged onto its window (`GLX.importConten
 
 Package namespace: **`laserphile.chromatik.video`** (Laserphile brand; `laserphile.chromatik` is the umbrella for sibling packages, `.video` is this one). This is the `<pkg>` in every path above, and each module owns its own `laserphile.chromatik.*` subpackage.
 
-**No shared code module yet.** `Projector`, `ProjectionParams`, `VideoFrame` and `FrameSource` stay package-private inside the video module. Extracting a `chromatik-core` means making them public and designing an API against a single consumer; the second plugin is what will show which of them are genuinely reusable. The parent pom makes that extraction cheap when the time comes.
+~~**No shared code module yet.**~~ **(done 2026-08-02.)** The second plugin arrived, so `chromatik-core` was extracted: it holds `ProjectionControls`, `ProjectionParams`, `Projector`, `VideoFrame`, `FrameSource`, `FramePipeline`, `ColorSpaceCorrection` and `WorkingResolution`, and bundles the decode stack. Only what a plugin reaches became public; `Projector` stayed package-private, because `ProjectionControls` is its only caller, which is exactly the question that waiting for a second consumer answered.
+
+It is a Chromatik package rather than a plain library, and the plugins take it at `provided` scope. That is forced by how Chromatik loads content: one shared class loader over every jar in the packages folder, and a registration pass that logs an error for any class name it has already seen. 328 of the 332 classes it registers from a bundled decode stack are `org.bytedeco`, so two plugins each carrying FFmpeg would collide 328 times over. One jar carries it and the plugins resolve it at runtime through that same shared loader.
 
 ## Milestones
 
