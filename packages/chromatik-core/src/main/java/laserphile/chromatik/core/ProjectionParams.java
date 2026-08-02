@@ -93,16 +93,37 @@ public final class ProjectionParams {
     this.m21 = cosYaw * sinPitch;
     this.m22 = cosYaw * cosPitch;
 
+    // Floor before the reciprocal. A modulated CompoundParameter can land on 0 or a denormal
+    // even when the knob's declared min is 0.1, and 1/denormal is Infinity — which then turns
+    // every UV into NaN under TILE/MIRROR and takes the engine with it.
     final double effectiveScaleX = this.scale * this.stretchX;
     final double effectiveScaleY = this.scale * this.stretchY;
 
-    this.invScaleX = effectiveScaleX != 0 ? 1.0 / effectiveScaleX : 0;
-    this.invScaleY = effectiveScaleY != 0 ? 1.0 / effectiveScaleY : 0;
+    this.invScaleX = reciprocalScale(effectiveScaleX);
+    this.invScaleY = reciprocalScale(effectiveScaleY);
 
     if (this.level != this.curveLevel || this.gamma != this.curveGamma) {
       rebuildToneCurve();
     }
   }
+
+  /**
+   * Inverse of a scale factor, or 0 when the factor is unusable.
+   *
+   * Zero (and anything smaller than {@link #MIN_EFFECTIVE_SCALE}) means "sample the centre
+   * forever" rather than zooming out without bound. That is the safe answer for a knob parked on
+   * its stop, and for a modulation that has driven Scale through zero.
+   */
+  private static double reciprocalScale(double effectiveScale) {
+    if (Math.abs(effectiveScale) < MIN_EFFECTIVE_SCALE) {
+      return 0;
+    }
+
+    return 1.0 / effectiveScale;
+  }
+
+  /** Below this, treat a scale factor as zero rather than inverting it. */
+  private static final double MIN_EFFECTIVE_SCALE = 1e-6;
 
   /**
    * Video carries brightness the way a screen expects it, spread so that dark detail gets more of

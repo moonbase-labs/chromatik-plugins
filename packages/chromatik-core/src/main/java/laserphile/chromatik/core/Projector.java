@@ -30,8 +30,15 @@ final class Projector {
       final double rotatedY =
         params.m01 * centeredX + params.m11 * centeredY + params.m21 * centeredZ;
 
-      final double u = rotatedX * params.invScaleX + 0.5 + params.scrollX;
-      final double v = rotatedY * params.invScaleY + 0.5 + params.scrollY;
+      double u = rotatedX * params.invScaleX + 0.5 + params.scrollX;
+      double v = rotatedY * params.invScaleY + 0.5 + params.scrollY;
+
+      // Non-finite UVs only show up when a scale slipped past the reciprocal guard; treat them
+      // as background rather than letting floor/cast turn NaN into a wild array index.
+      if (!Double.isFinite(u) || !Double.isFinite(v)) {
+        colors[point.index] = background;
+        continue;
+      }
 
       final int sampled = sampleWrapped(argb, width, height, u, v, params, background);
 
