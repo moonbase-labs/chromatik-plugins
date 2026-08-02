@@ -27,7 +27,7 @@ Keep the directory name, the artifactId and the Java subpackage in step: `packag
     <parent>
         <groupId>laserphile</groupId>
         <artifactId>chromatik-plugins</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>0.1.0-SNAPSHOT</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 

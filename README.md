@@ -4,13 +4,13 @@
 
 **Content packages for [Chromatik](https://chromatik.co/), the Java digital lighting workstation.**
 
-Play video on LEDs that aren't a screen.
+Play video, and run GLSL shaders, on LEDs that aren't a screen.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-8b5cf6.svg?style=flat-square)](LICENSE)
 [![Java 21](https://img.shields.io/badge/Java-21-f89820.svg?style=flat-square&logo=openjdk&logoColor=white)](https://adoptium.net/)
 [![Chromatik 1.2.1](https://img.shields.io/badge/Chromatik-1.2.1-00c8ff.svg?style=flat-square)](https://chromatik.co/)
 [![Platform: macOS · Windows · Linux](https://img.shields.io/badge/Platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-64748b.svg?style=flat-square)](#-install)
-[![Status: M4](https://img.shields.io/badge/Milestone-M4%20of%205-eab308.svg?style=flat-square)](#-roadmap)
+[![Patterns: Video · Screen · Shader](https://img.shields.io/badge/Patterns-Video%20%C2%B7%20Screen%20%C2%B7%20Shader-8b5cf6.svg?style=flat-square)](#-roadmap)
 
 [**Download the latest release**](https://github.com/moonbase-labs/chromatik-plugins/releases/latest)
 
@@ -22,10 +22,12 @@ Chromatik renders colour onto a **point cloud**, not a framebuffer. Every LED is
 
 Chromatik ships an `ImagePattern` for still images. It has **no video player**. That's the gap this repo fills.
 
-`VideoPattern` decodes a video on a background thread and projects each frame onto whatever 3D structure you've modelled, sampling a colour per LED through a full UV projection. A flat wall is just the special case where every point shares a `z`. A second pattern does the same for the live desktop.
+`VideoPattern` decodes a video on a background thread and projects each frame onto whatever 3D structure you've modelled, sampling a colour per LED through a full UV projection. A flat wall is just the special case where every point shares a `z`. Two more patterns put a different source through the same projection: one mirrors the live desktop, and one renders a GLSL fragment shader on the GPU.
+
+The **Shader** pattern takes a `.glsl` file, in whichever dialect it happens to be written. A Processing sketch's shader has no `#version` and writes `gl_FragColor`; a Shadertoy shader has no `main` at all, only a `mainImage`. Both run unmodified, because the loader puts a prologue in front rather than asking you to port anything. Every `uniform` the file declares becomes a knob, and saving an edit in your editor recompiles it live.
 
 > [!NOTE]
-> **Status: milestone 4 of 5.** Projection works end to end and is confirmed in-app. The full transport (play/pause, loop, speed, seek and scrub) and live screen capture are both code complete and pass their headless harnesses; the in-app pass on the transport controls, and on the real capture device, is still to come. See the [roadmap](#-roadmap).
+> **Status.** Video and Screen Capture are complete, M0 to M5. Shader renders, loads any dialect, hot reloads and puts its uniforms on knobs, all confirmed in-app on macOS; Linux is written but has never had a GPU under it, and Windows is not written. See the [roadmap](#-roadmap).
 
 ## ⬇️ Install
 
@@ -43,6 +45,10 @@ Two files: **Core**, which carries the video engine both patterns share, plus wh
    | **Core**, Linux (ARM, e.g. Raspberry Pi) | `chromatik-core-<version>-linux-arm64.jar` |
    | **Video**, plays a file | `chromatik-video-<version>.jar` |
    | **Screen Capture**, mirrors the desktop | `chromatik-screen-<version>.jar` |
+   | **Shader**, runs a `.glsl` file, Mac | `chromatik-shader-<version>-macos.jar` |
+   | **Shader**, Windows | `chromatik-shader-<version>-windows.jar` |
+   | **Shader**, Linux (Intel/AMD) | `chromatik-shader-<version>-linux-x86_64.jar` |
+   | **Shader**, Linux (ARM) | `chromatik-shader-<version>-linux-arm64.jar` |
 
 2. **Drag each onto the Chromatik window.** Chromatik installs them for you.
 3. In the **CONTENT** tab, click **Reload Package Content**.
@@ -60,6 +66,8 @@ Chromatik has no way to express that one package needs another, so a pattern ins
 [`projects/demo.lxp`](packages/chromatik-video/projects/demo.lxp) is a 30x30 grid with a Video pattern already on it, pointed at [`projects/demo-bars.mp4`](packages/chromatik-video/projects/demo-bars.mp4): colour bars over a grey ramp over a block that sweeps across the loop, so the playhead, looping and speed are all readable at a glance.
 
 Download both, put the clip in `~/Chromatik/LaserphileVideo/`, then open the project. The grid is 900 points, which is under the 1,000 that Chromatik's FREE tier will drive, so it runs real fixtures and not just the preview.
+
+For the Shader pattern there is a second one: [`projects/demo.lxp`](packages/chromatik-shader/projects/demo.lxp), the same grid with a Shader pattern on it pointed at `party_blob.glsl`. Copy the five shaders in [`packages/chromatik-shader/shaders/`](packages/chromatik-shader/shaders) into `~/Chromatik/LaserphileShader/`, then open the project. That folder is also where **Browse** opens by default, so anything you put there is one click away.
 
 <details>
 <summary><b>Prefer to place the file yourself?</b></summary>
@@ -94,6 +102,7 @@ Every release is loaded on real hardware of each platform before it ships, so th
 | [`packages/chromatik-core`](packages/chromatik-core) | `laserphile.chromatik.core` | no patterns of its own | The projection stage, the frame pipeline, and the bundled FFmpeg decode stack |
 | [`packages/chromatik-video`](packages/chromatik-video) | `laserphile.chromatik.video` | **Laserphile → Video** | Plays a video file onto the model |
 | [`packages/chromatik-screen`](packages/chromatik-screen) | `laserphile.chromatik.screen` | **Laserphile → Screen Capture** | Puts the live desktop onto the model |
+| [`packages/chromatik-shader`](packages/chromatik-shader) | `laserphile.chromatik.shader` | **Laserphile → Shader** | Renders a GLSL fragment shader onto the model |
 | [`packages/chromatik-mcp`](packages/chromatik-mcp) | `laserphile.chromatik.mcp` | no patterns, a plugin | Lets an AI agent read and compose the show over MCP |
 
 A Maven multi-module build, one module per Chromatik content package. Chromatik discovers packages by scanning `~/Chromatik/Packages/*.jar` for a root `lx.package` file, so one jar is exactly one package and every plugin needs its own module. The root `pom.xml` is the parent: it holds the compiler settings, the `provided` LX dependencies, the `lx.package` filtering, the shade config, and the install profile, so a new module is a ~15-line pom.
@@ -112,8 +121,10 @@ The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` p
 - **Four wrap modes.** `CLAMP`, `CLIP`, `TILE`, `MIRROR`, matching the vocabulary of the built-in `ImagePattern`.
 - **Transparent background.** `CLEAR` lets lower LX layers show through where the image doesn't reach.
 - **Bilinear sampling.** Cuts the shimmer you get when a sparse point cloud samples a small texture.
-- **Native file chooser.** A `Browse` button opens the real OS open dialog, no typing paths. It opens on the current video's folder, or on the folder you browsed to last, so picking a second clip is one click away. Files under `~/Chromatik` are stored as relative paths so a shared project still finds them.
-- **Zero custom UI.** A plain `LXPattern`, so Chromatik auto-generates the control panel and the whole thing runs on the **FREE licence tier**.
+- **Native file chooser.** A `Browse` button opens the real OS open dialog, no typing paths. It opens on the current file's folder, or on the folder you browsed to last, and for shaders on the plugin's own folder where the demos live. Files under `~/Chromatik` are stored as relative paths so a shared project still finds them.
+- **GLSL shaders, in whichever dialect they were written.** Processing-era files with no `#version` and Shadertoy files with no `main` both run untouched, because the loader wraps rather than rewrites. Each `uniform` becomes a knob, with its range taken from a trailing `@range` comment.
+- **Live shader editing.** Save the file and it recompiles, no button. A save that will not compile leaves the previous shader running and reports the compiler's message rather than going dark.
+- **FREE licence tier throughout.** No `LXPlugin` anywhere, which is what that tier gates. Shader supplies its own device panel by implementing `UIDeviceControls`, which Chromatik checks before it consults the plugin registry, so even the custom UI needs no licence.
 
 ## 🤖 Driving Chromatik from an AI agent
 
@@ -298,6 +309,62 @@ There is no capture-rate control: the capture runs at the engine's own frame rat
 
 `Screen`, `Cursor` and `Res` are read when the capture device opens, so changing any of them reopens it. The engine frame rate is not watched the same way, because it is a slider and reopening per drag increment would stall the capture for the length of the drag; a new rate applies the next time the device opens, which includes switching the pattern off and on.
 
+### Shader
+
+The projection controls again, plus a clock, plus whatever the shader itself declares.
+
+| Parameter | Type | Default | Range | Description |
+|---|---|---|---|---|
+| *(the shader's uniforms)* | Compound / Boolean | *per file* | 0 to 1 | One control per `uniform` the file declares, named after it. See below |
+| `Speed` | Compound | `1` | 0 to 4 | How fast the shader's clock advances. `0` holds it still |
+| `Level` | Compound | `1` | 0 to 1 | Master brightness |
+| `Play` | Boolean | `on` | | Advance the shader's clock |
+| `Scale` `ScrollX` `ScrollY` `Yaw` `Roll` `Gamma` `XScale` `YScale` `Pitch` `TransX/Y/Z` `Wrap` `Background` `Interp` | | | | Exactly as on the other two patterns |
+| `Res` | Discrete | `Auto` | `128` `256` `384` `512` `Auto` | Edge length to render at. `Auto` follows the model's point count |
+| `Browse` | Trigger | | | Pick a `.glsl` file. Opens in `~/Chromatik/LaserphileShader/` |
+| `Reload` | Trigger | | | Read and compile the file again |
+| `File` | String | empty | | The chosen path. Saved with the project, relative to `~/Chromatik` where possible |
+| `Error` | String | empty | | What the compiler said about the last file that would not build |
+
+Rendering happens on a GPU, in an offscreen context the pattern creates for itself, on the same background thread the video decoder would use. The clock is driven by the engine rather than read off the wall, which is what lets `Speed` scale it and `Play` hold it without the renderer knowing either control exists.
+
+#### Uniforms become controls
+
+Every `uniform` the file declares becomes a control named after it, except the ones the plugin drives itself: `time`, `resolution`, and their Shadertoy spellings `iTime`, `iResolution` and `iFrame`.
+
+A knob holds a 0 to 1 position, and the range is applied on the way to the shader. Unannotated, that range is 0 to 1. A trailing comment says otherwise:
+
+```glsl
+uniform float depth;  // @range(0.5, 4) @default(2)
+uniform float rate;   // @range(0.25, 2) @default(1)
+uniform bool  sharp;  // @default(0)
+```
+
+Storing the position rather than the value is what makes widening a `@range` non-destructive: the knob stays where it was instead of jumping. A `bool` becomes a switch, `float` and `int` become knobs, and anything larger, a `vec` or a `mat`, gets no control, because there is no sensible way for one knob to hold it.
+
+Getting the defaults right matters more than it sounds. Left at zero, `monjori` divides by one of them and three of the five shipped shaders render a flat frame.
+
+#### Which dialects load
+
+The file is never rewritten, only surrounded, and a `#line` directive puts the numbering back so a compile error names the line you are looking at.
+
+| The file has | What happens |
+|---|---|
+| No `#version` | One is injected |
+| `gl_FragColor` | Aliased to a core-profile output |
+| `texture2D` / `textureCube` | Aliased to `texture` |
+| `void mainImage(out vec4, in vec2)` and no `main` | Wrapped in the `main` Shadertoy would have supplied |
+| Its own `#version` | Kept, with the prologue slotted in behind it |
+| Neither entry point | Rejected, saying so. A vertex shader looks like this |
+
+Entry points are matched as definitions rather than as words, so a file carrying `#define mainImage main` left over from a hand port is not mistaken for a Shadertoy shader and made to call itself.
+
+#### Editing while it runs
+
+The chosen file is watched. Save it and it recompiles, with no button to press. A save that will not compile leaves the previous shader running and puts the compiler's message in `Error`: a typo costs the edit, not the output.
+
+An edit has to hold still across two checks a quarter-second apart before it is read, because editors do not write files atomically and half a file is not a syntax error worth reporting.
+
 ### Knob order on a control surface
 
 A MIDI surface binds its eight device knobs to the first eight of the pattern's remote controls, and an APC40 has no way to page past the eighth. So those eight are all continuous, and they are the first eight controls in the panel, in the same order:
@@ -306,14 +373,19 @@ A MIDI surface binds its eight device knobs to the first eight of the pattern's 
 |---|---|---|---|---|---|---|---|---|
 | **Video** | `Level` | `Speed` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Roll` | `Gamma` |
 | **Screen Capture** | `Level` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Roll` | `Gamma` | `XScale` |
+| **Shader** | *uniform 1* | *…* | *up to 6* | `Speed` | `Level` | `Scale` | `ScrollX` | `ScrollY` |
 
-The two line up except at knob 2, where Screen Capture has no `Speed` to spend the slot on, so everything shifts up one and `XScale` reaches the row.
+Video and Screen Capture line up except at knob 2, where Screen Capture has no `Speed` to spend the slot on, so everything shifts up one and `XScale` reaches the row.
+
+Shader is the one that breaks the pattern, deliberately. What is worth playing on a shader is the shader, so its own uniforms take the knobs from the left, and `Speed` and `Level` follow them. The row above shows a shader declaring six or more; one declaring two puts `Speed` on knob 3 and `Level` on knob 4. Six is the cap, so that `Speed` and `Level` always reach a knob no matter how much a file declares. A `bool` uniform becomes a switch and is pushed past the continuous ones wherever it was declared, since a switch inside the first eight costs a knob outright.
+
+Because the set changes with the file, Shader is also the only pattern here whose knob layout is not fixed. Its device panel is its own for the same reason: Chromatik's default one reads a device's controls once and never looks again, so a knob created when a shader loads would never appear.
 
 `Pitch` is the rotation left off the knobs. A projection sweeps it least of the three, and the freed slot goes to `Gamma`, which is what you reach for once the video is on real LEDs. `Pitch` is still on the panel and still mappable by hand.
 
 The surface order carries on down the panel from there, so the *n*th control you read is the *n*th a surface sees.
 
-Controls held back from the surface entirely sit at the end of the panel, which is what keeps everything ahead of them lined up. On Video that is `Res`, `Browse`, `Reload` and `File`. On Screen Capture it is `Screen`, `Cursor` and `Res`. `Browse`, `Reload` and `File` go to disk; the rest tear down the current source and open another, and a screen device can take seconds to open, so a swept knob would thrash it.
+Controls held back from the surface entirely sit at the end of the panel, which is what keeps everything ahead of them lined up. On Video that is `Res`, `Browse`, `Reload` and `File`. On Screen Capture it is `Screen`, `Cursor` and `Res`. On Shader it is `Res`, `Browse`, `Reload`, `File` and `Error`. `Browse`, `Reload`, `File` and `Error` go to disk or come back from it; the rest tear down the current source and open another, and both a screen device and a GL context take real time to build, so a swept knob would thrash them.
 
 ## 🧠 How it works
 
@@ -417,6 +489,15 @@ This is re-implemented from the documented behaviour of Chromatik's `ImagePatter
 - [x] **M3** Transport. Playback clock, play/pause, loop, speed, seek and scrub, ring buffer with back-pressure and a real drop policy.
 - [x] **M4** Screen capture. A `Screen Capture` pattern of its own, on FFmpeg's per-OS capture device, behind the existing `FrameSource` seam with single-slot live buffering.
 - [x] **M5** Polish. BT.709 colour-space correction, `Gamma`, working-resolution downscale, recoverable decode errors, a one-click demo project, and an uber-jar down from 2,314 classes to 473. (Per-OS build profiles landed early, with the release pipeline. Frame pooling was dropped: the downscale already keeps frames small enough that it earned nothing.)
+
+The Shader pattern has its own run, numbered separately because it is a different feature rather than a later stage of the same one:
+
+- [x] **S0** Offscreen context spike. Established that Chromatik offers no OpenGL to borrow, and that CGL makes a context off the main thread with no window. See [`docs/milestones/shader/S0-context-spike.md`](docs/milestones/shader/S0-context-spike.md).
+- [x] **S1** Skeleton. The shader as a `FrameSource`, reusing the pipeline and the projection controls unchanged.
+- [x] **S2** Loading. Dialect normalisation, entry-point detection, and hot reload that survives a broken save.
+- [x] **S3** Uniforms. A control per declared uniform, `@range` annotations, and a device panel of its own so they can appear at all.
+- [x] **S4** Linux, and CI. GLX onto a pbuffer, plus a release gate for the shader jar's shape.
+- [ ] **S5** Windows. Needs a real window to hang a device context on, which through LWJGL's bindings means a registered window class, a native window procedure and a hand-assembled struct. Unwritten rather than half-written: it reports itself unsupported, and the other three platforms are unaffected.
 
 Design decisions, open questions, and per-milestone detail live in [`docs/`](docs/): [`PLAN.md`](docs/PLAN.md) is the source of truth, [`PROGRESS.md`](docs/PROGRESS.md) tracks state and carries the decisions log.
 
