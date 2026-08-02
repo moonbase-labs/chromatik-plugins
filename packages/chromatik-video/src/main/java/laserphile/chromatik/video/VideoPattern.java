@@ -149,6 +149,34 @@ public class VideoPattern extends LXPattern {
     addParameter("interpolation", this.interpolation);
     addParameter("level", this.level);
 
+    setRemoteControls(
+      // A MIDI surface binds its eight device knobs to the first eight entries here, so all eight
+      // are continuous controls. An APC40 cannot page past its eighth knob, so a button or a
+      // trigger in this range costs a knob outright.
+      this.level,
+      this.speed,
+      this.scale,
+      this.scrollX,
+      this.scrollY,
+      this.yaw,
+      this.pitch,
+      this.roll,
+      // Past the eighth knob. Still mappable by hand, just not picked up by a surface.
+      this.position,
+      this.stretchX,
+      this.stretchY,
+      this.translateX,
+      this.translateY,
+      this.translateZ,
+      this.wrapMode,
+      this.backgroundMode,
+      this.interpolation,
+      this.play,
+      this.loop,
+      this.restart);
+    // Browse and Reload stay out of the list: both open or re-read a file from disk, which is not
+    // something to hand to a control surface.
+
     this.fileName.addListener(parameter -> this.openRequested = true);
     this.browse.onTrigger(this::showFileChooser);
     this.reload.onTrigger(() -> this.openRequested = true);
