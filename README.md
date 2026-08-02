@@ -303,7 +303,27 @@ Chromatik reloads a rebuilt package from the **CONTENT** tab: **Reload Package C
 
 Adding a plugin is four files and one line in the root pom: [`docs/ADDING-A-PLUGIN.md`](docs/ADDING-A-PLUGIN.md).
 
-Tagging `v<x.y.z>` publishes a release. [CI](.github/workflows/ci.yml) builds all four platform jars, loads each one on real hardware of its platform, then attaches them with checksums. The tag sets the version, so the pom stays on `-SNAPSHOT`.
+### Releasing
+
+Tagging publishes. [CI](.github/workflows/ci.yml) builds all four platform jars, loads each one on real hardware of its platform, then attaches them with checksums.
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Versions are [semver](https://semver.org/): `vMAJOR.MINOR.PATCH`, optionally with a `-prerelease` suffix. A tag that isn't fails the build before anything is published, and a `-prerelease` tag (`v0.2.0-rc.1`) is marked as such on GitHub so it stays out of "latest release". Build metadata (`+`) is rejected: semver ignores it for precedence and it mangles download URLs.
+
+The tag is the only place a release version lives. The pom stays on `-SNAPSHOT` naming the release it's heading for, and CI overwrites it at build time so the jar reports a real version through `lx.package`.
+
+What counts as breaking, for a Chromatik package, is compatibility with saved `.lxp` projects, since those store the pattern's class name and its parameter paths:
+
+| | Means |
+|---|---|
+| **MAJOR** | A saved project won't reload cleanly: a parameter renamed or removed, the pattern class renamed, or `mediaDir` changed. |
+| **MINOR** | New parameters, new patterns, a newly supported platform. Existing projects unaffected. |
+| **PATCH** | Fixes and performance work with no change to the parameter surface. |
+
+While MAJOR is `0` this is pre-1.0, so a MINOR bump is allowed to break things. Reaching 1.0 is the promise not to.
 
 A few things worth knowing before you touch the code:
 

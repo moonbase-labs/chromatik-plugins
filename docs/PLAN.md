@@ -181,7 +181,9 @@ Pushing a `v*` tag publishes a GitHub Release. CI builds one jar per platform on
 | `-linux-x86_64` | `linux-x86_64` | 27 MB | `ubuntu-24.04` |
 | `-linux-arm64` | `linux-arm64` | 27 MB | `ubuntu-24.04-arm` |
 
-The gate is `ci/NativeLoadCheck.java`, run with Java's single-file source launcher so it needs no build step or test framework. It loads the FFmpeg natives, confirms `lx.package` and `VideoPattern.class` survived shading, and decodes ten frames from FFmpeg's synthetic `lavfi` `testsrc`, so no fixture file is involved.
+The gate is `ci/NativeLoadCheck.java`, run with Java's single-file source launcher so it needs no build step or test framework. It loads the FFmpeg natives, confirms `lx.package` and `VideoPattern.class` survived shading, and decodes ten frames from `ci/testclip.mp4`, a 2.7 KB H.264/MP4 fixture. H.264 in MP4 is what the plugin gets pointed at in real use, and unlike FFmpeg's synthetic `lavfi` source it is available in every Bytedeco build: the Linux ones ship without the lavfi demuxer.
+
+Versions are semver, `vMAJOR.MINOR.PATCH[-prerelease]`, validated before the build runs. MAJOR means a saved `.lxp` project will not reload cleanly, since a project stores the pattern class name and its parameter paths. See the README for the full table.
 
 Runner labels are pinned rather than floating: `macos-13` was retired in December 2025 and `macos-latest` moved to macOS 26 in July 2026, so `-latest` labels move under you. GitHub has said Intel macOS runners end in Fall 2027, which is when `macosx-x86_64` stops being verifiable on free hosted runners.
 

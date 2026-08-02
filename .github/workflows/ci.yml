@@ -33,6 +33,26 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
+      # The tag is the single source of truth for a release version, so it has to be a valid one.
+      # Rejecting it here costs seconds; a bad version discovered later is baked into lx.package,
+      # into four published filenames, and into whatever people already downloaded.
+      #
+      # Semver, minus build metadata: a '+' is legal in semver but makes a mess of a download URL
+      # and carries no precedence meaning, so there is nothing to gain by allowing it.
+      - name: Check the tag is semver
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if [[ ! $version =~ $semver ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not semver. Expected vMAJOR.MINOR.PATCH, optionally -prerelease (v1.2.3, v0.2.0-rc.1)."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing $version"
+        id: version
+
       # A released jar should report its real version in Chromatik's package list, so take it
       # from the tag rather than leaving the pom's -SNAPSHOT in lx.package.
       - name: Set version from tag
@@ -130,10 +150,20 @@ jobs:
         working-directory: dist
         run: sha256sum *.jar | tee SHA256SUMS
 
+      # A semver prerelease is the hyphen suffix, so v0.2.0-rc.1 is flagged on GitHub as one and
+      # stays out of "latest release", which is what the README links to.
       - name: Release notes
+        shell: bash
         env:
-          VERSION: ${{ github.ref_name }}
-        run: sed "s/{{VERSION}}/${VERSION#v}/g" .github/release-notes.md > dist/notes.md
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          sed "s/{{VERSION}}/${version}/g" .github/release-notes.md > dist/notes.md
+          if [[ $version == *-* ]]; then
+            echo "prerelease=--prerelease" >> "$GITHUB_ENV"
+          else
+            echo "prerelease=" >> "$GITHUB_ENV"
+          fi
 
       # gh is preinstalled on the runner, so the release needs no third-party action.
       - name: Create release
@@ -144,4 +174,5 @@ jobs:
             dist/*.jar dist/SHA256SUMS \
             --title "${{ github.ref_name }}" \
             --notes-file dist/notes.md \
-            --verify-tag
+            --verify-tag \
+            $prerelease
