@@ -4,7 +4,7 @@
 
 ## Current status
 
-- **Current milestone:** M3 code complete and verified headlessly (play/pause, loop, speed, seek/scrub, restart, `level`); the sleep-pacing is gone, replaced by a playback clock + bounded ring with back-pressure. **Awaiting the in-app pass:** the jar is installed in `~/Chromatik/Packages`, so drive each transport control in the panel and watch the frame-rate meter while scrubbing. Next after that: M4 screen capture.
+- **Current milestone:** M3 code complete and verified headlessly (play/pause, loop, speed, seek/scrub, restart, `level`); the sleep-pacing is gone, replaced by a playback clock + bounded ring with back-pressure. **Awaiting the in-app pass:** the jar is installed and confirmed loading in-app (`Package:Laserphile Video ... buildTimestamp:2026-08-02T02:40:14Z`), so drive each transport control in the panel and watch the frame-rate meter while scrubbing. Next after that: M4 screen capture.
 - **Last updated:** 2026-08-02 (M3 built and headless-verified).
 
 ## Milestone tracker
@@ -42,7 +42,7 @@ Record each decision with a date and one-line rationale.
 
 - Temurin JDK (build): `21.0.11` (arm64) at `/Library/Java/JavaVirtualMachines/temurin-21.jdk`
 - Maven: `3.9.16` (brew), runs on `JAVA_HOME`=Temurin 21
-- Chromatik: `1.2.1` (from `~/Chromatik/Logs`); runs on its own bundled Java `21.0.7`. Licence tier = **FREE** (`1.0.0 FREE - heronarts.lx.core`). App binary not in `/Applications`; launched from elsewhere (find before the M1 visual check).
+- Chromatik: `1.2.1` (from `~/Chromatik/Logs`); runs on its own bundled Java `21.0.7`. Licence tier = **FREE** (`1.0.0 FREE - heronarts.lx.core`). App is at `/Applications/Chromatik.app`, launch with `open -a Chromatik`.
 - `lx.version` pinned in pom: `1.2.1` (matches installed Chromatik)
 
 ## Open questions
