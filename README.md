@@ -67,7 +67,7 @@ Chromatik has no way to express that one package needs another, so a pattern ins
 
 Download both, put the clip in `~/Chromatik/LaserphileVideo/`, then open the project. The grid is 900 points, which is under the 1,000 that Chromatik's FREE tier will drive, so it runs real fixtures and not just the preview.
 
-For the Shader pattern there is a second one: [`projects/demo.lxp`](packages/chromatik-shader/projects/demo.lxp), the same grid with a Shader pattern on it pointed at `party_blob.glsl`. Copy the five shaders in [`packages/chromatik-shader/shaders/`](packages/chromatik-shader/shaders) into `~/Chromatik/LaserphileShader/`, then open the project. That folder is also where **Browse** opens by default, so anything you put there is one click away.
+For the Shader pattern there is a second one: [`projects/demo.lxp`](packages/chromatik-shader/projects/demo.lxp), the same grid with a Shader pattern on it pointed at `party_blob.glsl`. Copy the six shaders in [`packages/chromatik-shader/shaders/`](packages/chromatik-shader/shaders) into `~/Chromatik/LaserphileShader/`, then open the project. That folder is also where **Browse** opens by default, so anything you put there is one click away.
 
 <details>
 <summary><b>Prefer to place the file yourself?</b></summary>
@@ -342,7 +342,7 @@ uniform bool  sharp;  // @default(0)
 
 Storing the position rather than the value is what makes widening a `@range` non-destructive: the knob stays where it was instead of jumping. A `bool` becomes a switch, `float` and `int` become knobs, and anything larger, a `vec` or a `mat`, gets no control, because there is no sensible way for one knob to hold it.
 
-Getting the defaults right matters more than it sounds. Left at zero, `monjori` divides by one of them and three of the five shipped shaders render a flat frame.
+Getting the defaults right matters more than it sounds. Left at zero, `monjori` divides by one of them and three of the six shipped shaders render a flat frame.
 
 #### Which dialects load
 
