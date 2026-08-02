@@ -25,9 +25,11 @@ final class FileVideoSource implements FrameSource {
   }
 
   @Override
-  public void open() throws Exception {
+  public void open(int longestEdge) throws Exception {
     this.grabber = new FFmpegFrameGrabber(this.path);
     this.grabber.start();
+
+    WorkingResolution.applyTo(this.grabber, longestEdge);
 
     this.correction = ColorSpaceCorrection.forStream(this.grabber, this.path);
   }

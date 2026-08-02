@@ -4,6 +4,7 @@ import heronarts.lx.LX;
 import heronarts.lx.LXCategory;
 import heronarts.lx.LXComponent;
 import heronarts.lx.color.LXColor;
+import heronarts.lx.model.LXModel;
 import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.DiscreteParameter;
 import heronarts.lx.pattern.LXPattern;
@@ -47,6 +48,9 @@ public class ScreenCapturePattern extends LXPattern {
       .setDescription("Which display to capture (ignored on Windows)");
   public final BooleanParameter cursor =
     new BooleanParameter("Cursor", true).setDescription("Include the mouse pointer");
+  public final DiscreteParameter workingResolution =
+    new DiscreteParameter("Res", WorkingResolution.OPTIONS, WorkingResolution.AUTO_OPTION)
+      .setDescription("Longest edge to capture at; Auto follows the model's point count");
 
   private final FramePipeline pipeline = new FramePipeline();
 
@@ -78,6 +82,7 @@ public class ScreenCapturePattern extends LXPattern {
     // every control after it and break the panel's match with the knobs.
     addParameter("screen", this.screen);
     addParameter("cursor", this.cursor);
+    addParameter("workingResolution", this.workingResolution);
 
     setRemoteControls(
       // A MIDI surface binds its eight device knobs to the first eight entries here, so all eight
@@ -101,13 +106,27 @@ public class ScreenCapturePattern extends LXPattern {
       this.projection.wrapMode,
       this.projection.backgroundMode,
       this.projection.interpolation);
-    // Screen and Cursor stay out of the list entirely. Both are read when the capture device opens,
-    // so changing either reopens it, and a screen device can take seconds to open. They are
-    // discrete controls a surface could happily bind, which is exactly why the exclusion is
-    // deliberate: swept from a knob, they would thrash the device.
+    // Screen, Cursor and Res stay out of the list entirely. All three are read when the capture
+    // device opens, so changing any of them reopens it, and a screen device can take seconds to
+    // open. They are discrete controls a surface could happily bind, which is exactly why the
+    // exclusion is deliberate: swept from a knob, they would thrash the device.
 
     this.screen.addListener(parameter -> this.openRequested = true);
     this.cursor.addListener(parameter -> this.openRequested = true);
+    this.workingResolution.addListener(parameter -> this.openRequested = true);
+  }
+
+  /**
+   * A new model means a new point count, and on Auto that is what sets the capture size, so the
+   * device has to be opened again to take effect. Any fixed size is unaffected.
+   */
+  @Override
+  protected void onModelChanged(LXModel model) {
+    super.onModelChanged(model);
+
+    if (this.workingResolution.getValuei() == WorkingResolution.AUTO_OPTION) {
+      this.openRequested = true;
+    }
   }
 
   private void openCapture() {
@@ -124,7 +143,8 @@ public class ScreenCapturePattern extends LXPattern {
     final double engineFrameRate = this.lx.engine.framesPerSecond.getValue();
 
     this.pipeline.start(
-      new ScreenCaptureSource(this.screen.getValuei(), engineFrameRate, this.cursor.isOn()));
+      new ScreenCaptureSource(this.screen.getValuei(), engineFrameRate, this.cursor.isOn()),
+      WorkingResolution.edgeFor(this.workingResolution.getValuei(), this.model.size));
   }
 
   @Override

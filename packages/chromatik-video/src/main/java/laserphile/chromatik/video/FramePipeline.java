@@ -74,7 +74,7 @@ final class FramePipeline {
   /** A seek order. Only the newest matters, so a new one replaces the old rather than queueing. */
   private record SeekRequest(int generation, long mediaTimeMs) {}
 
-  void start(FrameSource source) {
+  void start(FrameSource source, int longestEdge) {
     stop();
 
     final int epoch = this.startEpoch.incrementAndGet();
@@ -83,8 +83,9 @@ final class FramePipeline {
 
     // Named after the source because two patterns can be running at once, and a thread dump is the
     // only way to tell which of them is the one wedged in a capture that never opened.
-    this.thread =
-      new Thread(() -> openAndRun(source, epoch), String.format("laserphile-decode %s", source));
+    this.thread = new Thread(
+      () -> openAndRun(source, longestEdge, epoch),
+      String.format("laserphile-decode %s", source));
     this.thread.setDaemon(true);
     this.thread.start();
   }
@@ -95,9 +96,9 @@ final class FramePipeline {
    * open() can block for a long time and, for screen capture without permission, forever. It runs
    * here rather than in start() so that only this daemon thread ever waits on it.
    */
-  private void openAndRun(FrameSource source, int epoch) {
+  private void openAndRun(FrameSource source, int longestEdge, int epoch) {
     try {
-      source.open();
+      source.open(longestEdge);
 
       this.durationMs = source.durationMs();
 

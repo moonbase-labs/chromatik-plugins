@@ -28,20 +28,12 @@ import heronarts.lx.LX;
 final class ScreenCaptureSource implements FrameSource {
 
   /**
-   * Longest side of a captured frame. A Retina desktop runs to about 3000x2000, which is 24 MB of
-   * pixels every frame and far more detail than a few thousand LEDs can show; capping it keeps the
-   * per-frame cost near a video file's. swscale does the shrink as part of the colour conversion
-   * that has to happen anyway, so it is close to free. The user-facing working-resolution control
-   * is a later milestone; this is just a ceiling that keeps live capture affordable.
-   */
-  private static final int MAX_CAPTURE_EDGE = 480;
-
-  /**
    * Fastest worth capturing at. The engine's own frame rate decides the capture rate, and it goes
    * up to 300, which no display produces and nothing downstream could use: the engine only ever
    * looks at the newest frame, so anything past its own rate is decoded and thrown away.
    */
   private static final double MAX_CAPTURE_FRAME_RATE = 60;
+
 
   /** The desktop has no natural frame rate, so the capture rate is also the reported one. */
   private final double targetFrameRate;
@@ -72,7 +64,7 @@ final class ScreenCaptureSource implements FrameSource {
   }
 
   @Override
-  public void open() throws Exception {
+  public void open(int longestEdge) throws Exception {
     final CaptureDevice device = detectCaptureDevice();
 
     this.grabber = new FFmpegFrameGrabber(inputFor(device));
@@ -87,7 +79,9 @@ final class ScreenCaptureSource implements FrameSource {
 
     this.grabber.start();
 
-    capFrameSize();
+    // A Retina desktop runs to about 3000x2000, which is 24 MB of pixels every frame and far more
+    // detail than a few thousand LEDs can show, so this matters more here than for a video file.
+    WorkingResolution.applyTo(this.grabber, longestEdge);
 
     // A capture device usually hands over RGB already, in which case no colour-difference
     // conversion happens and there is nothing to put right. Asking anyway costs one read and
@@ -96,30 +90,6 @@ final class ScreenCaptureSource implements FrameSource {
 
     LX.log(String.format("[LaserphileVideo] screen capture open: %dx%d at %.0f fps",
       this.grabber.getImageWidth(), this.grabber.getImageHeight(), this.targetFrameRate));
-  }
-
-  /**
-   * Shrink the frames to something an LED model can use, preserving the display's aspect ratio.
-   *
-   * The size is set after opening rather than before on purpose. Asking for a size up front makes
-   * the grabber pass it to the device as a requested capture mode, which a screen cannot satisfy,
-   * and it would also mean guessing the display's shape. Once the device is open its real size is
-   * known, and setting the size before the first grab still reaches swscale in time to be the size
-   * the frames come out at.
-   */
-  private void capFrameSize() {
-    final int nativeWidth = this.grabber.getImageWidth();
-    final int nativeHeight = this.grabber.getImageHeight();
-    final int longestEdge = Math.max(nativeWidth, nativeHeight);
-
-    if (longestEdge <= MAX_CAPTURE_EDGE) {
-      return;
-    }
-
-    final double shrink = MAX_CAPTURE_EDGE / (double) longestEdge;
-
-    this.grabber.setImageWidth(Math.max(1, (int) Math.round(nativeWidth * shrink)));
-    this.grabber.setImageHeight(Math.max(1, (int) Math.round(nativeHeight * shrink)));
   }
 
   private static CaptureDevice detectCaptureDevice() throws Exception {

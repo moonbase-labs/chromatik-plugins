@@ -10,8 +10,15 @@ interface FrameSource extends AutoCloseable {
   /** Reported by {@link #durationMs()} when the source has no timeline (a live capture). */
   long DURATION_UNKNOWN = -1;
 
-  /** Open the underlying decoder / capture device. */
-  void open() throws Exception;
+  /**
+   * Open the underlying decoder / capture device, producing frames no larger than
+   * {@code longestEdge} on their longest side.
+   *
+   * The size is an argument to opening rather than a setting of its own because that is the only
+   * moment it can be applied: it has to be asked for after the device is open and before the first
+   * frame is grabbed. Changing it therefore means opening again.
+   */
+  void open(int longestEdge) throws Exception;
 
   /** Frames per second to pace playback at. Falls back to a sane default if unknown. */
   double frameRate();

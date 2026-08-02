@@ -9,8 +9,10 @@ import heronarts.lx.LX;
 import heronarts.lx.LXCategory;
 import heronarts.lx.LXComponent;
 import heronarts.lx.color.LXColor;
+import heronarts.lx.model.LXModel;
 import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.CompoundParameter;
+import heronarts.lx.parameter.DiscreteParameter;
 import heronarts.lx.parameter.StringParameter;
 import heronarts.lx.parameter.TriggerParameter;
 import heronarts.lx.pattern.LXPattern;
@@ -57,6 +59,10 @@ public class VideoPattern extends LXPattern {
     new TriggerParameter("Browse").setDescription("Pick a video file");
   public final TriggerParameter reload =
     new TriggerParameter("Reload").setDescription("Re-open the current source");
+
+  public final DiscreteParameter workingResolution =
+    new DiscreteParameter("Res", WorkingResolution.OPTIONS, WorkingResolution.AUTO_OPTION)
+      .setDescription("Longest edge to decode frames at; Auto follows the model's point count");
 
   public final BooleanParameter play =
     new BooleanParameter("Play", true).setDescription("Run the playhead");
@@ -107,6 +113,7 @@ public class VideoPattern extends LXPattern {
 
     // Everything below is held back from the surface, so it goes last. Anything surface-less added
     // earlier would offset every control after it and break the panel's match with the knobs.
+    addParameter("workingResolution", this.workingResolution);
     addParameter("browse", this.browse);
     addParameter("reload", this.reload);
 
@@ -141,10 +148,12 @@ public class VideoPattern extends LXPattern {
       this.loop,
       this.restart);
     // Browse and Reload stay out of the list: both open or re-read a file from disk, which is not
-    // something to hand to a control surface. Both are the tail of the panel, so every control
-    // ahead of them lines up with its position on a surface.
+    // something to hand to a control surface. Res stays out for the same reason, more so: changing
+    // it tears down the current source and opens another. All three are the tail of the panel, so
+    // every control ahead of them lines up with its position on a surface.
 
     this.fileName.addListener(parameter -> this.openRequested = true);
+    this.workingResolution.addListener(parameter -> this.openRequested = true);
     this.browse.onTrigger(this::showFileChooser);
     this.reload.onTrigger(() -> this.openRequested = true);
     this.restart.onTrigger(() -> this.restartRequested = true);
@@ -166,7 +175,8 @@ public class VideoPattern extends LXPattern {
       return; // nothing to open, and fileSource() has already said why
     }
 
-    this.pipeline.start(source);
+    this.pipeline.start(
+      source, WorkingResolution.edgeFor(this.workingResolution.getValuei(), this.model.size));
   }
 
   /** The chosen file as a source, or null when no file has been chosen yet. */
@@ -286,6 +296,19 @@ public class VideoPattern extends LXPattern {
     }
 
     return file.getAbsolutePath();
+  }
+
+  /**
+   * A new model means a new point count, and on Auto that is what sets the decode size, so the
+   * source has to be opened again to take effect. Any fixed size is unaffected.
+   */
+  @Override
+  protected void onModelChanged(LXModel model) {
+    super.onModelChanged(model);
+
+    if (this.workingResolution.getValuei() == WorkingResolution.AUTO_OPTION) {
+      this.openRequested = true;
+    }
   }
 
   @Override
