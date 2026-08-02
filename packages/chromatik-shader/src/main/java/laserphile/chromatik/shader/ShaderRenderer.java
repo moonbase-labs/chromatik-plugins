@@ -1,6 +1,7 @@
 package laserphile.chromatik.shader;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 
 import laserphile.chromatik.core.VideoFrame;
 
@@ -46,8 +47,27 @@ final class ShaderRenderer {
    */
   private int program;
 
+  /**
+   * Where the built-in uniforms landed, under both the plain and the Shadertoy spelling. A shader
+   * declares whichever it grew up with and ignores the rest, and a name it never used reports -1,
+   * which glUniform treats as a no-op. So all of them are set every frame and nothing here has to
+   * know which dialect the file came from.
+   */
   private int timeLocation = -1;
+  private int shadertoyTimeLocation = -1;
   private int resolutionLocation = -1;
+  private int shadertoyResolutionLocation = -1;
+  private int frameLocation = -1;
+
+  /**
+   * Where each of the shader's own uniforms landed, in the order they were declared, so a value
+   * array from the engine can be uploaded by position without matching names every frame. A
+   * uniform the compiler optimised away reports -1, which glUniform ignores.
+   */
+  private int[] customLocations = new int[0];
+
+  /** Kept alongside the locations because an int or bool uniform needs a different upload call. */
+  private List<UniformDeclaration> customDeclarations = List.of();
 
   ShaderRenderer(int edge) {
     this.edge = edge;
@@ -86,7 +106,7 @@ final class ShaderRenderer {
    * @return null when it compiled and linked, otherwise the driver's log. The caller decides what
    *     to do with the text; this class only guarantees that a failure changes nothing.
    */
-  String compile(String fragmentSource) {
+  String compile(String fragmentSource, List<UniformDeclaration> declarations) {
     final int vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, VERTEX_SHADER);
     glCompileShader(vertexShader);
@@ -133,7 +153,16 @@ final class ShaderRenderer {
 
     this.program = linked;
     this.timeLocation = glGetUniformLocation(linked, "time");
+    this.shadertoyTimeLocation = glGetUniformLocation(linked, "iTime");
     this.resolutionLocation = glGetUniformLocation(linked, "resolution");
+    this.shadertoyResolutionLocation = glGetUniformLocation(linked, "iResolution");
+    this.frameLocation = glGetUniformLocation(linked, "iFrame");
+
+    this.customDeclarations = declarations;
+    this.customLocations = new int[declarations.size()];
+    for (int index = 0; index < declarations.size(); index++) {
+      this.customLocations[index] = glGetUniformLocation(linked, declarations.get(index).name());
+    }
 
     return null;
   }
@@ -150,17 +179,33 @@ final class ShaderRenderer {
    * go into the frame top-first, because that is what the projection stage samples. Hence the
    * reversed copy rather than a straight one.
    */
-  VideoFrame render(double timeSeconds, long mediaTimeMs) {
+  VideoFrame render(double timeSeconds, int frameNumber, long mediaTimeMs, float[] uniformValues) {
     glUseProgram(this.program);
 
-    // A shader that declares neither reports -1 for both, and glUniform on -1 is a documented
-    // no-op, so nothing here needs to know which uniforms the source happened to use.
-    if (this.timeLocation >= 0) {
-      glUniform1f(this.timeLocation, (float) timeSeconds);
+    // Shorter of the two, because a reload can change how many uniforms there are a moment before
+    // the engine has rebuilt its side. The mismatch lasts one frame and this is what makes it
+    // harmless rather than an exception on the render thread.
+    final int uploadCount = Math.min(this.customLocations.length, uniformValues.length);
+    for (int index = 0; index < uploadCount; index++) {
+      final int location = this.customLocations[index];
+      final float value = uniformValues[index];
+
+      // GLSL will not take a float for an int or a bool, so the declared type picks the call.
+      switch (this.customDeclarations.get(index).type()) {
+        case "int" -> glUniform1i(location, Math.round(value));
+        case "bool" -> glUniform1i(location, (value >= 0.5f) ? 1 : 0);
+        default -> glUniform1f(location, value);
+      }
     }
-    if (this.resolutionLocation >= 0) {
-      glUniform2f(this.resolutionLocation, this.edge, this.edge);
-    }
+
+    glUniform1f(this.timeLocation, (float) timeSeconds);
+    glUniform1f(this.shadertoyTimeLocation, (float) timeSeconds);
+    glUniform2f(this.resolutionLocation, this.edge, this.edge);
+
+    // Shadertoy's is a vec3, whose third component is the pixel aspect ratio. The render target is
+    // square, so it is always 1.
+    glUniform3f(this.shadertoyResolutionLocation, this.edge, this.edge, 1f);
+    glUniform1i(this.frameLocation, frameNumber);
 
     glClear(GL_COLOR_BUFFER_BIT);
     glDrawArrays(GL_TRIANGLES, 0, 3);
