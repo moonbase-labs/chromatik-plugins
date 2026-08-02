@@ -29,6 +29,7 @@
         <module>packages/chromatik-core</module>
         <module>packages/chromatik-video</module>
         <module>packages/chromatik-screen</module>
+        <module>packages/chromatik-shader</module>
         <module>packages/chromatik-mcp</module>
     </modules>
 
@@ -50,6 +51,15 @@
           exactly the classes Chromatik will hand it at runtime. Bump this only when lx does.
         -->
         <gson.version>2.13.1</gson.version>
+
+        <!--
+          GL bindings for the shader plugin. Chromatik ships LWJGL core, GLFW and bgfx but not
+          lwjgl-opengl, so that one module is bundled and the rest stay provided. The version has
+          to track whatever GLX depends on: the bundled module links against the core classes
+          Chromatik has already loaded, and a mismatch between them fails at runtime rather than
+          at build time. Check glx's pom when bumping lx.version.
+        -->
+        <lwjgl.version>3.3.6</lwjgl.version>
 
         <maven-compiler-plugin.version>3.8.0</maven-compiler-plugin.version>
         <maven-resources-plugin.version>3.3.1</maven-resources-plugin.version>

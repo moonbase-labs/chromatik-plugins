@@ -1,0 +1,148 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>laserphile</groupId>
+        <artifactId>chromatik-plugins</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>chromatik-shader</artifactId>
+    <name>Laserphile Shader</name>
+
+    <!--
+      Renders a GLSL fragment shader to an offscreen framebuffer and projects the result onto
+      the model, through the same FrameSource seam and the same projection controls as Video
+      and Screen Capture. The shader is the frame source; nothing else about the pipeline changes.
+
+      Chromatik gives a plugin no OpenGL to borrow. Its renderer is bgfx (Metal on macOS), it
+      creates its GLFW window with GLFW_CLIENT_API = GLFW_NO_API so there is no GL context on it,
+      and it ships no shader compiler, so bgfx could not compile GLSL at runtime even if the
+      thread affinity allowed it. This plugin therefore brings its own context.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>laserphile</groupId>
+            <artifactId>chromatik-core</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!--
+          Compiled against for VideoFrame, whose signatures name JavaCV types. Provided, because
+          chromatik-core is the package that carries the decode stack at runtime.
+        -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacv</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!--
+          The GL bindings, bundled because Chromatik has none. It also carries the CGL, WGL and
+          GLX entry points each platform's offscreen context is built from.
+        -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-opengl</artifactId>
+            <version>${lwjgl.version}</version>
+        </dependency>
+
+        <!--
+          lwjgl-opengl asks for LWJGL core at compile scope, which would shade org/lwjgl/system/**
+          into this jar. Chromatik has already loaded every one of those classes, so each would
+          become a duplicate-registration error in the log the moment this package is installed.
+          Declaring it here at provided overrides the transitive scope: the classes are still on
+          the compile path and still there at runtime, they just come from Chromatik.
+        -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl</artifactId>
+            <version>${lwjgl.version}</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <!--
+      One profile per distributable jar, mirroring chromatik-core. LWJGL resolves its native by
+      literal classpath resource path (macos/arm64/org/lwjgl/opengl/liblwjgl_opengl.dylib), which
+      is the same reason the inherited shade config does no relocation.
+
+      dist-macos is the default so a plain `mvn package` here produces the jar Mac users download,
+      and it carries both architectures for the reason chromatik-core does: the alternative is
+      making every Mac user identify their own CPU, and getting it wrong is a native-load stack
+      trace rather than a clear message.
+    -->
+    <profiles>
+        <profile>
+            <id>dist-macos</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-macos</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.lwjgl</groupId>
+                    <artifactId>lwjgl-opengl</artifactId>
+                    <version>${lwjgl.version}</version>
+                    <classifier>natives-macos-arm64</classifier>
+                </dependency>
+                <dependency>
+                    <groupId>org.lwjgl</groupId>
+                    <artifactId>lwjgl-opengl</artifactId>
+                    <version>${lwjgl.version}</version>
+                    <classifier>natives-macos</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>dist-windows</id>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-windows</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.lwjgl</groupId>
+                    <artifactId>lwjgl-opengl</artifactId>
+                    <version>${lwjgl.version}</version>
+                    <classifier>natives-windows</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>dist-linux-x86_64</id>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-linux-x86_64</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.lwjgl</groupId>
+                    <artifactId>lwjgl-opengl</artifactId>
+                    <version>${lwjgl.version}</version>
+                    <classifier>natives-linux</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>dist-linux-arm64</id>
+            <build>
+                <finalName>${project.artifactId}-${project.version}-linux-arm64</finalName>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.lwjgl</groupId>
+                    <artifactId>lwjgl-opengl</artifactId>
+                    <version>${lwjgl.version}</version>
+                    <classifier>natives-linux-arm64</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+</project>
