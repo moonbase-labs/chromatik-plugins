@@ -25,7 +25,7 @@ jobs:
     name: Build all platforms
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-java@v5
         with:
@@ -59,7 +59,7 @@ jobs:
           find packages -path '*/target/*.jar' ! -name 'original-*' -exec cp {} dist/ \;
           ls -l dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: jars
           path: dist/
@@ -92,14 +92,14 @@ jobs:
             runner: ubuntu-24.04-arm
             jar: '*-linux-arm64.jar'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: jars
           path: dist
@@ -119,9 +119,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: jars
           path: dist
