@@ -95,6 +95,12 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
   private static final String[] SHADER_EXTENSIONS = { "glsl", "frag", "fs", "fsh" };
 
   /**
+   * This package's folder under ~/Chromatik, which Chromatik creates from the mediaDir declared in
+   * lx.package. Where the demo shaders are staged and where Browse opens by default.
+   */
+  private static final String SHADER_MEDIA_FOLDER = "LaserphileShader";
+
+  /**
    * Saved under a prefix so that a shader is free to call a uniform whatever it likes without
    * colliding with a control this pattern already owns. A shader with a uniform called "level"
    * would otherwise fail to register it, and silently lose the knob.
@@ -291,6 +297,10 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
    * belonged to a uniform that no longer exists.
    */
   private void rebuildUniformControls(List<UniformDeclaration> declarations) {
+    if (alreadyBuiltFor(declarations)) {
+      return;
+    }
+
     for (UniformControl existing : this.uniformControls) {
       // Unregistered but deliberately not disposed. Disposing clears a parameter's listener list,
       // and the panels drawing these knobs have listeners on them: Chromatik's performance device
@@ -317,6 +327,34 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
 
     // Tells any open device panel that the knobs it drew are no longer the right ones.
     this.onReload.setValue(this.onReload.getValue() + 1);
+  }
+
+  /**
+   * Whether the controls standing now are already the ones these declarations describe.
+   *
+   * Opening a project asks for the controls twice: once from {@link #load}, which reads the file
+   * off disk so the saved values have somewhere to land, and again when the render thread reports
+   * the same file compiled. Tearing perfectly good controls down and building identical ones costs
+   * every knob a panel has drawn on them, and the panels do not all survive having a parameter
+   * swapped underneath them mid-rebuild. Nothing changed, so nothing is rebuilt.
+   *
+   * Compared by value rather than by name alone, so that editing a @range in the file still counts
+   * as a change and still moves the knob's scale.
+   */
+  private boolean alreadyBuiltFor(List<UniformDeclaration> declarations) {
+    final List<UniformControl> standing = this.uniformControls;
+
+    if (standing.size() != declarations.size()) {
+      return false;
+    }
+
+    for (int index = 0; index < declarations.size(); index++) {
+      if (!standing.get(index).declaration().equals(declarations.get(index))) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   private static LXListenableNormalizedParameter controlFor(UniformDeclaration declaration) {
@@ -399,7 +437,13 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
 
   /**
    * Where the chooser opens: the folder holding the current shader, else the folder the last
-   * browse landed in, else the Chromatik media folder.
+   * browse landed in, else this package's own shader folder.
+   *
+   * That last one is the point of declaring a mediaDir. Chromatik creates ~/Chromatik/{@value
+   * #SHADER_MEDIA_FOLDER} for this package on startup, and it is where the shipped demo shaders
+   * are meant to live, so opening there puts something to pick in front of someone who has never
+   * used the pattern before. Falling back to the media root instead would open on a folder of
+   * other plugins' folders.
    *
    * The dialog reads whatever follows the final separator as a file name and opens the folder
    * above it, so a folder has to be handed over with its trailing separator kept.
@@ -413,6 +457,12 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
 
     if (lastBrowsedFolder != null) {
       return asFolderPath(lastBrowsedFolder);
+    }
+
+    final File shaderFolder = this.lx.getMediaFile(SHADER_MEDIA_FOLDER);
+
+    if (shaderFolder != null && shaderFolder.isDirectory()) {
+      return asFolderPath(shaderFolder.getAbsolutePath());
     }
 
     return asFolderPath(this.lx.getMediaPath());
