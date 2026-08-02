@@ -7,7 +7,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -301,32 +303,81 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
       return;
     }
 
+    // The awkward bit here is that removeParameter() disposes the underlying parameter and clears
+    // its listener list: any panel that had a listener on it then throws when it later tries to
+    // remove itself, which lands on the engine thread. Chromatik's performance device, an APC40,
+    // and this pattern's own device panel all listen on uniform knobs, so a naïve remove-then-add
+    // rebuild storms the log with those exceptions on every shader load that changes any uniform.
+    //
+    // The rebuild here avoids that in the common case by keeping a parameter whose name and
+    // control kind carry over — the widgets bound to it stay bound, no dispose happens, and any
+    // saved modulation on it survives — and by removing the outgoing parameters only after the
+    // panels have been given a chance to rebind. Same-name-different-kind remains a rare case
+    // where the collision has to be resolved before the new parameter can take the path, and the
+    // strand for that single knob is unavoidable without changes to LX itself.
+    final Map<String, UniformControl> outgoingByName = new HashMap<>();
     for (UniformControl existing : this.uniformControls) {
-      // Unregistered but deliberately not disposed. Disposing clears a parameter's listener list,
-      // and the panels drawing these knobs have listeners on them: Chromatik's performance device
-      // rebuilds itself the moment the remote controls change below, and the first thing it does
-      // is dispose its old controls, each of which then tries to remove a listener from a
-      // parameter that no longer has a list to remove it from. That throws, once per knob, out of
-      // run() and onto the engine thread. Leaving the parameter intact lets every panel let go of
-      // it in its own time, after which nothing refers to it.
-      removeParameter(existing.parameter(), false);
+      outgoingByName.put(existing.declaration().name(), existing);
     }
 
     final List<UniformControl> rebuilt = new ArrayList<>();
+    final List<UniformControl> toAdd = new ArrayList<>();
+    final List<UniformControl> toRemoveNow = new ArrayList<>();
 
     for (UniformDeclaration declaration : declarations) {
-      final LXListenableNormalizedParameter parameter = controlFor(declaration);
+      final UniformControl carryover = outgoingByName.remove(declaration.name());
 
-      addParameter(UNIFORM_KEY_PREFIX + declaration.name(), parameter);
-      rebuilt.add(new UniformControl(declaration, parameter));
+      if (carryover != null && sameControlKind(carryover.declaration(), declaration)) {
+        // Same knob, possibly with a widened range — updating the declaration is enough.
+        rebuilt.add(new UniformControl(declaration, carryover.parameter()));
+      } else {
+        final UniformControl fresh =
+          new UniformControl(declaration, controlFor(declaration));
+
+        rebuilt.add(fresh);
+        toAdd.add(fresh);
+
+        // Path collision: the new parameter has to register under the same name, so the old one
+        // has to leave first even though its listeners will strand.
+        if (carryover != null) {
+          toRemoveNow.add(carryover);
+        }
+      }
+    }
+
+    // Colliding outgoing parameters have to go before addParameter can reuse their path. This is
+    // the one place a strand is inevitable, and the log line that follows is LX's own.
+    for (UniformControl leaving : toRemoveNow) {
+      removeParameter(leaving.parameter(), false);
+    }
+
+    // Register the fresh parameters. setCustomRemoteControls below requires that every entry is
+    // a descendant of this component, so this has to happen before the UI rebuild.
+    for (UniformControl added : toAdd) {
+      addParameter(UNIFORM_KEY_PREFIX + added.declaration().name(), added.parameter());
     }
 
     this.uniformControls = List.copyOf(rebuilt);
 
+    // Panels rebind here. Anything they let go of still points at a live parameter, either one
+    // that was carried over or one that stays alive until the deferred removal below.
     updateRemoteControls();
-
-    // Tells any open device panel that the knobs it drew are no longer the right ones.
     this.onReload.setValue(this.onReload.getValue() + 1);
+
+    // Now the non-colliding outgoing parameters are unreferenced by any panel, so disposal
+    // strands nothing.
+    for (UniformControl leaving : outgoingByName.values()) {
+      removeParameter(leaving.parameter(), false);
+    }
+  }
+
+  /**
+   * Whether two declarations produce the same kind of knob. A bool becomes a switch, everything
+   * else a compound knob, so those two branches are what a widget cares about; a widened range
+   * only reskins an existing knob.
+   */
+  private static boolean sameControlKind(UniformDeclaration left, UniformDeclaration right) {
+    return left.type().equals("bool") == right.type().equals("bool");
   }
 
   /**
