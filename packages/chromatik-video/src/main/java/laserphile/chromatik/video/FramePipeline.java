@@ -44,6 +44,14 @@ final class FramePipeline {
 
   private static final long TWO_SECONDS_IN_MS = 2000;
 
+  /**
+   * How many grabs may fail in a row before the decode thread stops trying. A damaged frame in the
+   * middle of an otherwise readable file should cost that frame and nothing else, so failures are
+   * retried; a file that has genuinely stopped being readable would otherwise spin forever, so a
+   * run this long is taken as the source being gone rather than one bad frame.
+   */
+  private static final int CONSECUTIVE_DECODE_FAILURES_ALLOWED = 10;
+
   private final BlockingQueue<VideoFrame> ring = new ArrayBlockingQueue<>(RING_CAPACITY);
   private final AtomicReference<SeekRequest> seekRequest = new AtomicReference<>();
 
@@ -128,8 +136,26 @@ final class FramePipeline {
    * the correct answer for live footage.
    */
   private void captureLoop(FrameSource source, int epoch) throws Exception {
+    int failuresSinceGoodFrame = 0;
+
     while (isCurrent(epoch)) {
-      final VideoFrame captured = source.grab();
+      final VideoFrame captured;
+
+      // A desktop can go to sleep, change resolution, or lose the display underneath the capture,
+      // and each of those surfaces as a failed grab rather than as the device closing. Worth
+      // riding out, since whatever the user did is usually over in a moment.
+      try {
+        captured = source.grab();
+      } catch (InterruptedException interrupted) {
+        throw interrupted; // shutdown, not a capture fault
+      } catch (Exception failure) {
+        failuresSinceGoodFrame = noteDecodeFailure(source, failure, failuresSinceGoodFrame);
+
+        Thread.sleep(TWENTY_MILLISECONDS);
+        continue;
+      }
+
+      failuresSinceGoodFrame = 0;
 
       if (captured == null) {
         Thread.sleep(TWENTY_MILLISECONDS);
@@ -169,6 +195,9 @@ final class FramePipeline {
     // Decoded but not yet accepted by a full ring, held over to the next iteration.
     VideoFrame pending = null;
 
+    // Grabs that have failed since the last good frame. Reset by any frame that arrives.
+    int failuresSinceGoodFrame = 0;
+
     while (isCurrent(epoch)) {
       final SeekRequest request = this.seekRequest.get();
 
@@ -186,7 +215,21 @@ final class FramePipeline {
       }
 
       if (pending == null) {
-        final VideoFrame decoded = source.grab();
+        final VideoFrame decoded;
+
+        try {
+          decoded = source.grab();
+        } catch (InterruptedException interrupted) {
+          throw interrupted; // shutdown, not a decode fault
+        } catch (Exception failure) {
+          failuresSinceGoodFrame =
+            noteDecodeFailure(source, failure, failuresSinceGoodFrame);
+
+          Thread.sleep(TWENTY_MILLISECONDS);
+          continue;
+        }
+
+        failuresSinceGoodFrame = 0;
 
         if (decoded == null) {
           if (!this.looping) {
@@ -226,6 +269,30 @@ final class FramePipeline {
         this.publishedAnyFrame = true;
       }
     }
+  }
+
+  /**
+   * Count a failed grab and decide whether to carry on, returning the new run length.
+   *
+   * Only the first failure of a run is logged, because a file that has stopped being readable
+   * fails every time it is asked and would otherwise fill the log before it gives up. Passing the
+   * failure back out once the run is long enough hands it to the caller's own reporting.
+   */
+  private static int noteDecodeFailure(FrameSource source, Exception failure, int alreadyFailed)
+    throws Exception {
+
+    final int failures = alreadyFailed + 1;
+
+    if (failures == 1) {
+      LX.log(String.format(
+        "[LaserphileVideo] decode error for %s, skipping the frame: %s", source, failure));
+    }
+
+    if (failures >= CONSECUTIVE_DECODE_FAILURES_ALLOWED) {
+      throw failure;
+    }
+
+    return failures;
   }
 
   /** Whether a decode thread still owns this pipeline, or has been superseded by a later start(). */

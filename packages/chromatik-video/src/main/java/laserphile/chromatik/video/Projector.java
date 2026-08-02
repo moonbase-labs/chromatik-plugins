@@ -17,8 +17,7 @@ final class Projector {
     final int width = frame.width;
     final int height = frame.height;
 
-    final int background =
-      params.backgroundMode == ProjectionParams.BackgroundMode.CLEAR ? 0x00000000 : 0xFF000000;
+    final int background = ProjectionParams.backgroundColor(params.backgroundMode);
 
     for (LXPoint point : model.points) {
       final double centeredX = point.xn - 0.5 - params.translateX;

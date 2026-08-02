@@ -3,7 +3,6 @@ package laserphile.chromatik.video;
 import heronarts.lx.LX;
 import heronarts.lx.LXCategory;
 import heronarts.lx.LXComponent;
-import heronarts.lx.color.LXColor;
 import heronarts.lx.model.LXModel;
 import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.DiscreteParameter;
@@ -181,7 +180,9 @@ public class ScreenCapturePattern extends LXPattern {
     }
 
     if (this.currentFrame == null) {
-      setColors(LXColor.hsb(0, 0, 0)); // black until the first frame is captured
+      // Nothing captured yet, or nothing ever: a device still opening, or one the operating system
+      // never granted. The Background control says what should show through.
+      setColors(ProjectionParams.backgroundColor(this.projection.backgroundMode.getEnum()));
       return;
     }
 

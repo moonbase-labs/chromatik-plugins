@@ -34,14 +34,26 @@ final class FileVideoSource implements FrameSource {
     this.correction = ColorSpaceCorrection.forStream(this.grabber, this.path);
   }
 
+  // Both of the following are asked immediately after open() succeeds, so the grabber is normally
+  // there. They still answer when it is not, because a failed open leaves it null and an exception
+  // on the way out of one of these would replace the real reason the open failed.
+
   @Override
   public double frameRate() {
+    if (this.grabber == null) {
+      return DEFAULT_FRAME_RATE;
+    }
+
     final double reported = this.grabber.getFrameRate();
     return reported > 0 ? reported : DEFAULT_FRAME_RATE;
   }
 
   @Override
   public long durationMs() {
+    if (this.grabber == null) {
+      return DURATION_UNKNOWN;
+    }
+
     final long lengthMicroseconds = this.grabber.getLengthInTime();
 
     return lengthMicroseconds > 0

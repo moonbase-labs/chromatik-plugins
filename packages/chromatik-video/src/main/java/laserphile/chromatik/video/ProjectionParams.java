@@ -17,6 +17,18 @@ public final class ProjectionParams {
 
   public enum Interpolation { NEAREST, BILINEAR }
 
+  /**
+   * What to paint where the image does not reach: transparent under CLEAR so whatever the channel
+   * is layered over shows through, opaque black otherwise.
+   *
+   * Also what the whole model gets while there is no frame to draw, so a source that is still
+   * opening, or one that failed to, leaves the channel looking the way its own controls say it
+   * should rather than forcing black over the top.
+   */
+  static int backgroundColor(BackgroundMode backgroundMode) {
+    return backgroundMode == BackgroundMode.CLEAR ? 0x00000000 : 0xff000000;
+  }
+
   // Inputs (set each frame before recompute()).
   double yaw;
   double pitch;

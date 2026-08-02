@@ -8,7 +8,6 @@ import heronarts.glx.GLX;
 import heronarts.lx.LX;
 import heronarts.lx.LXCategory;
 import heronarts.lx.LXComponent;
-import heronarts.lx.color.LXColor;
 import heronarts.lx.model.LXModel;
 import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.CompoundParameter;
@@ -179,12 +178,19 @@ public class VideoPattern extends LXPattern {
       source, WorkingResolution.edgeFor(this.workingResolution.getValuei(), this.model.size));
   }
 
-  /** The chosen file as a source, or null when no file has been chosen yet. */
+  /** The chosen file as a source, or null when there is nothing openable to point at. */
   private FrameSource fileSource() {
     final String resolved = resolvePath(this.fileName.getString());
 
     if (resolved == null) {
       LX.log("[LaserphileVideo] no video selected: use Browse, or type a path into File");
+      return null;
+    }
+
+    // Checked here so a mistyped path, or a project opened on a machine without the clip, says so
+    // plainly. Left to FFmpeg it arrives as an error about an I/O layer, naming nothing useful.
+    if (!new File(resolved).isFile()) {
+      LX.log(String.format("[LaserphileVideo] video file not found: %s", resolved));
       return null;
     }
 
@@ -335,7 +341,9 @@ public class VideoPattern extends LXPattern {
     final VideoFrame frame = this.pipeline.frameFor(this.clock.streamTimeMs());
 
     if (frame == null) {
-      setColors(LXColor.hsb(0, 0, 0)); // black until the first frame is decoded
+      // Nothing to draw yet, or nothing ever: a source still opening, one that failed to open, or
+      // a file that was never chosen. The Background control says what should show through.
+      setColors(ProjectionParams.backgroundColor(this.projection.backgroundMode.getEnum()));
       return;
     }
 
