@@ -70,17 +70,19 @@ public class NativeLoadCheck {
 
   /**
    * Chromatik finds a package by looking for lx.package at the jar root, then reflects over the
-   * public LXPattern subclasses it finds. Both have to survive shading or the jar installs and
-   * silently contributes nothing.
+   * public LXPattern subclasses it finds. All of it has to survive shading or the jar installs and
+   * silently contributes nothing, and a jar missing one of the two patterns would otherwise look
+   * perfectly healthy here.
    *
-   * VideoPattern is checked as a resource rather than loaded, because it extends LXPattern and
+   * The patterns are checked as resources rather than loaded, because they extend LXPattern and
    * LX is a provided dependency: it is deliberately absent from this jar and from this classpath.
    */
   private static void checkJarContents() {
     requireResource("lx.package");
     requireResource("laserphile/chromatik/video/VideoPattern.class");
+    requireResource("laserphile/chromatik/video/ScreenCapturePattern.class");
 
-    System.out.println("lx.package and VideoPattern present");
+    System.out.println("lx.package, VideoPattern and ScreenCapturePattern present");
   }
 
   private static void checkDecode() throws Exception {

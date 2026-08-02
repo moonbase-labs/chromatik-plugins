@@ -70,7 +70,7 @@ The nearest existing thing to reuse is the built-in `heronarts.lx.pattern.image.
 
 ## Architecture overview
 
-Five cooperating units, split by thread ownership (engine thread vs decode thread) and by concern (source / buffering / clock / projection). Only `VideoPattern` needs to be `public` and non-abstract; Chromatik auto-discovers and registers it, no `LXPlugin` required. The rest are package-internal.
+Five cooperating units, split by thread ownership (engine thread vs decode thread) and by concern (source / buffering / clock / projection). The patterns (`VideoPattern` and `ScreenCapturePattern`) are the only types that need to be `public` and non-abstract; Chromatik auto-discovers and registers each, no `LXPlugin` required. The rest are package-internal.
 
 **`VideoPattern extends heronarts.lx.pattern.LXPattern`** (engine thread): the orchestrator. Owns all `LXParameter`s, the pipeline, the clock, and the projector. Its `run(double deltaMs)` ticks the clock, syncs control state to the decode thread, selects the current frame non-blockingly, snapshots the projection parameters, and projects into `colors[]`. It starts the pipeline in `onActive()` and stops it in `onInactive()` and `dispose()`. It never touches a decoder directly.
 
@@ -118,7 +118,7 @@ The two reusable primitives, `mapPointToUV(...)` and `sample(...)`, are source-i
 
 All standard `LXParameter`s so Chromatik renders the panel with no custom UI. Transport parameters no-op when the source is `SCREEN` (we cannot hide them without custom UI, so document the behaviour).
 
-- **Source**: `source` (Enum: FILE, SCREEN), `fileName` (String path), `browse` (Trigger), `reload` (Trigger), `screen` (Discrete 0..3, which display to capture) and `captureFrameRate` (Discrete 5..60) for the SCREEN source. The capture settings are read when the device opens, so changing either reopens it.
+- **Source**: the two patterns split this rather than sharing a mode switch. Video has `fileName` (String path), `browse` (Trigger) and `reload` (Trigger). Screen Capture has `screen` (Discrete 0..3, which display) and `cursor` (Boolean), both read when the device opens, so changing either reopens it; its capture rate follows `lx.engine.framesPerSecond` clamped to 60 rather than being a control.
 - **Transport** (file only): `play` (Boolean), `loop` (Boolean), `speed` (Compound, roughly 0.1 to 4.0, exponential), `position` (Compound 0 to 1, two-way playhead that also seeks when edited), `restart` (Trigger).
 - **Projection** (mirror `ImagePattern.Image`'s exact field names): `yaw`/`pitch`/`roll`, `translateX/Y/Z`, `scale` (+ `scaleRange`, `scaleX`/`scaleY`), `stretchX`/`stretchY`/`stretchAspect`, `scrollX`/`scrollY`, `imageMode` (Enum: `CLAMP`/`CLIP`/`TILE`/`MIRROR`), `backgroundMode` (Enum: `BLACK`/`CLEAR`).
 - **Sampling / colour**: `interpolation` (Enum NEAREST/BILINEAR), `level` (0 to 1), `gamma` (1 to 3).
@@ -159,9 +159,9 @@ ci/NativeLoadCheck.java                       the per-platform release gate
 packages/chromatik-video/
   pom.xml                                     parent, artifactId, name, deps, dist-* profiles
   src/main/resources/lx.package
-  src/main/java/<pkg>/VideoPattern.java       (public, auto-discovered)
+  src/main/java/<pkg>/VideoPattern.java  ScreenCapturePattern.java   (public, auto-discovered)
   src/main/java/<pkg>/FrameSource.java  FileVideoSource.java  ScreenCaptureSource.java
-  src/main/java/<pkg>/FramePipeline.java  PlaybackClock.java  SourceType.java
+  src/main/java/<pkg>/FramePipeline.java  PlaybackClock.java  ProjectionControls.java
   src/main/java/<pkg>/Projector.java  ProjectionParams.java  VideoFrame.java
   projects/demo.lxp                           (optional one-click demo)
 ```
@@ -203,7 +203,7 @@ Each is a coherent, demoable, mergeable unit. See `milestones/M*.md` for the ful
 - **M1. Skeleton plus decode-to-single-point sanity.** `VideoPattern` builds, installs, appears in Chromatik; decode thread fills the buffer; `run()` paints the whole model one colour from the latest frame. Proves threading, lifecycle, non-blocking engine.
 - **M2. Projection MVP.** `Projector` with full UV projection, wrap and background modes, nearest sampling; a recognisable video projects onto the model.
 - **M3. Transport.** `PlaybackClock` (play/pause, loop, speed, seek/`position`, restart), ring-buffer timing, coalesced scrub, back-pressure and drop policy, bilinear sampling and `level`.
-- **M4. Screen capture.** `ScreenCaptureSource`, `SourceType` enum, live latest-frame path, transport no-ops for live.
+- **M4. Screen capture.** `ScreenCaptureSource` plus a `ScreenCapturePattern` of its own, live latest-frame path, projection controls shared with Video through `ProjectionControls`.
 - **M5. Polish.** Colour-space and gamma correction, working-resolution auto, frame pooling, error handling, demo `.lxp`, per-OS build profiles, distribution README.
 
 ## Risks and open questions

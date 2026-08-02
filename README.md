@@ -22,7 +22,7 @@ Chromatik renders colour onto a **point cloud**, not a framebuffer. Every LED is
 
 Chromatik ships an `ImagePattern` for still images. It has **no video player**. That's the gap this repo fills.
 
-`VideoPattern` decodes a video on a background thread and projects each frame onto whatever 3D structure you've modelled, sampling a colour per LED through a full UV projection. A flat wall is just the special case where every point shares a `z`.
+`VideoPattern` decodes a video on a background thread and projects each frame onto whatever 3D structure you've modelled, sampling a colour per LED through a full UV projection. A flat wall is just the special case where every point shares a `z`. A second pattern does the same for the live desktop.
 
 > [!NOTE]
 > **Status: milestone 4 of 5.** Projection works end to end and is confirmed in-app. The full transport (play/pause, loop, speed, seek and scrub) and live screen capture are both code complete and pass their headless harnesses; the in-app pass on the transport controls, and on the real capture device, is still to come. See the [roadmap](#-roadmap).
@@ -60,7 +60,7 @@ Drop the `.jar` in your Chromatik packages folder and restart the app. Chromatik
 </details>
 
 <details>
-<summary><b><code>Source: Screen</code> renders black</b></summary>
+<summary><b>The Screen Capture pattern renders black</b></summary>
 
 Screen capture needs the operating system's permission, and Chromatik has to be the application that holds it. On macOS that's **System Settings → Privacy & Security → Screen & System Audio Recording**: switch Chromatik on, then restart it, since the permission is only picked up at launch.
 
@@ -76,7 +76,7 @@ Every release is loaded on real hardware of each platform before it ships, so th
 
 | Module | Package | Category in Chromatik | What it does |
 |---|---|---|---|
-| [`packages/chromatik-video`](packages/chromatik-video) | `laserphile.chromatik.video` | **Laserphile → Video** | Decodes a video file and projects it onto the model |
+| [`packages/chromatik-video`](packages/chromatik-video) | `laserphile.chromatik.video` | **Laserphile → Video**, **Laserphile → Screen Capture** | Projects a video file, or the live desktop, onto the model |
 
 A Maven multi-module build, one module per Chromatik content package. Chromatik discovers packages by scanning `~/Chromatik/Packages/*.jar` for a root `lx.package` file, so one jar is exactly one package and every plugin needs its own module. The root `pom.xml` is the parent: it holds the compiler settings, the `provided` LX dependencies, the `lx.package` filtering, the shade config, and the install profile, so a new module is a ~15-line pom.
 
@@ -87,7 +87,7 @@ The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` p
 - **Model-agnostic projection.** Works on any `LXModel`: domes, sculptures, strips, matrices. Nothing assumes a grid.
 - **Never blocks the engine.** All decode and colour conversion happen off the LX engine thread. `run()` does a lock-free read and a tight per-point loop.
 - **Full transport.** Play/pause, loop, 0.1x to 4x speed, and a two-way position slider you can scrub. Looping is gapless and scrubbing coalesces, so a fast drag doesn't queue up a hundred seeks.
-- **Live screen capture.** Set `Source` to `Screen` and the desktop goes onto the LEDs in real time, through the same projection controls as a file. Pick the display and the capture rate; a live source keeps only the newest frame, so nothing buffers latency in between. Needs screen-recording permission for Chromatik.
+- **Live screen capture.** A second pattern, **Screen Capture**, puts the desktop onto the LEDs in real time through the same projection controls. It keeps only the newest frame, so nothing buffers latency in between, and it carries no transport, because a live desktop has no playhead to move. Needs screen-recording permission for Chromatik.
 - **Full projection control.** Yaw, pitch, roll, translate on three axes, scale, per-axis stretch, and scroll.
 - **Four wrap modes.** `CLAMP`, `CLIP`, `TILE`, `MIRROR`, matching the vocabulary of the built-in `ImagePattern`.
 - **Transparent background.** `CLEAR` lets lower LX layers show through where the image doesn't reach.
@@ -171,7 +171,9 @@ java -cp packages/chromatik-video/target/chromatik-video-*-macos.jar ci/NativeLo
 
 ## 🎛️ Parameters
 
-Chromatik generates the panel from these automatically, as a grid three rows deep. They are listed here in panel order, which is the order the panel reads left to right, top to bottom.
+Chromatik generates each panel from these automatically. They are listed in panel order, which is the order the panel reads left to right, top to bottom. The two patterns share the projection controls and differ in everything else.
+
+### Video
 
 | Parameter | Type | Default | Range | Description |
 |---|---|---|---|---|
@@ -182,23 +184,43 @@ Chromatik generates the panel from these automatically, as a grid three rows dee
 | `Yaw` | Compound | `0` | -180 to 180 | Rotation about the vertical axis |
 | `Pitch` | Compound | `0` | -180 to 180 | Rotation about the horizontal axis |
 | `Roll` | Compound | `0` | -180 to 180 | Rotation about the view axis |
-| `Position` | Compound | `0` | 0 to 1 | Playhead. Follows playback, and seeks when you drag it |
 | `StretchX` `StretchY` | Compound | `1` | 0.1 to 10 | Per-axis stretch on top of `Scale` |
 | `TransX` `TransY` `TransZ` | Compound | `0` | -1 to 1 | Shift the image on each axis |
 | `Wrap` | Enum | `CLAMP` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
 | `Background` | Enum | `BLACK` | `BLACK` `CLEAR` | Colour for points rejected by `CLIP` |
 | `Interp` | Enum | `BILINEAR` | `NEAREST` `BILINEAR` | `NEAREST` is blocky, `BILINEAR` is smoother |
+| `Position` | Compound | `0` | 0 to 1 | Playhead. Follows playback, and seeks when you drag it |
 | `Play` | Boolean | `on` | | Run the playhead |
 | `Loop` | Boolean | `on` | | Start again on reaching the end |
 | `Restart` | Trigger | | | Jump back to the start and play |
-| `Source` | Enum | `File` | `File` `Screen` | Play a video file, or capture the live desktop |
-| `Screen` | Discrete | `0` | 0 to 3 | Which display to capture. Ignored on Windows, which captures the whole desktop |
-| `CapFps` | Discrete | `30` | 5 to 60 | Rate to capture the desktop at |
 | `Browse` | Trigger | | | Pick a video with the native file chooser |
-| `Reload` | Trigger | | | Re-open the current source |
+| `Reload` | Trigger | | | Re-open the current file |
 | `File` | String | empty | | Absolute path, or relative to `~/Chromatik`. Written by `Browse` and saved with the project, no control of its own |
 
 Every `Compound` parameter is modulatable, so any of them can be driven by an LFO, an envelope, or MIDI.
+
+### Screen Capture
+
+The same projection controls, minus everything that needs a timeline. `Speed`, `Position`, `Play`, `Loop` and `Restart` are absent because a live desktop has no playhead to move, and the file controls are absent because there is no file.
+
+| Parameter | Type | Default | Range | Description |
+|---|---|---|---|---|
+| `Level` | Compound | `1` | 0 to 1 | Master brightness |
+| `Scale` | Compound | `1` | 0.1 to 10 | Zoom, larger values zoom in |
+| `ScrollX` `ScrollY` | Compound | `0` | -1 to 1 | UV offset. With `Scale`, this is how you crop into part of the desktop |
+| `Yaw` `Pitch` `Roll` | Compound | `0` | -180 to 180 | Rotation about each axis |
+| `StretchX` `StretchY` | Compound | `1` | 0.1 to 10 | Per-axis stretch on top of `Scale`. `StretchX` is the one to reach for fitting a 16:10 desktop |
+| `Freeze` | Boolean | `off` | | Hold the current frame instead of following the screen |
+| `TransX` `TransY` `TransZ` | Compound | `0` | -1 to 1 | Shift the image on each axis |
+| `Wrap` | Enum | `CLAMP` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
+| `Background` | Enum | `BLACK` | `BLACK` `CLEAR` | Colour for points rejected by `CLIP` |
+| `Interp` | Enum | `BILINEAR` | `NEAREST` `BILINEAR` | `NEAREST` is blocky, `BILINEAR` is smoother |
+| `Screen` | Discrete | `0` | 0 to 3 | Which display to capture. Ignored on Windows, which captures the whole desktop |
+| `Cursor` | Boolean | `on` | | Include the mouse pointer |
+
+There is no capture-rate control: the capture runs at the engine's own frame rate, capped at 60, since there is nothing to gain from grabbing the screen faster than the renderer consumes it.
+
+`Screen` and `Cursor` are read when the capture device opens, so changing either reopens it. The engine frame rate is not watched the same way, because it is a slider and reopening per drag increment would stall the capture for the length of the drag; a new rate applies the next time the device opens, which includes switching the pattern off and on.
 
 ### Knob order on a control surface
 
@@ -206,11 +228,14 @@ A MIDI surface binds its eight device knobs to the first eight of the pattern's 
 
 | Knob | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
-| | `Level` | `Speed` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Pitch` | `Roll` |
+| **Video** | `Level` | `Speed` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Pitch` | `Roll` |
+| **Screen Capture** | `Level` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Pitch` | `Roll` | `StretchX` |
 
-The surface order carries on down the panel from there, so the *n*th control you read is the *n*th a surface sees, all the way to `Restart`.
+The two line up except at knob 2, where Screen Capture has no `Speed` to spend the slot on, so everything shifts up one and `StretchX` reaches the row.
 
-The five after that are held back from the surface, which is why they sit at the end. `Browse` and `Reload` both go to disk. `Source`, `Screen` and `CapFps` tear down the current source and open another, and a screen device can take seconds to open, so a swept knob would thrash it.
+The surface order carries on down the panel from there, so the *n*th control you read is the *n*th a surface sees.
+
+Controls held back from the surface entirely sit at the end of the panel, which is what keeps everything ahead of them lined up. On Video that is `Browse`, `Reload` and `File`, all of which go to disk. On Screen Capture it is `Screen` and `Cursor`: each tears down the capture device and opens another, and a screen device can take seconds to open, so a swept knob would thrash it.
 
 ## 🧠 How it works
 
@@ -287,7 +312,8 @@ All under `packages/chromatik-video/src/main/java/laserphile/chromatik/video/`.
 | `FrameSource.java` | decode | Interface. The seam that lets a file and a live screen share one pipeline and one projector. |
 | `FileVideoSource.java` | decode | Wraps `FFmpegFrameGrabber`. Video track only, so the audio is never decoded or seeked. |
 | `ScreenCaptureSource.java` | capture | The desktop through FFmpeg's per-OS capture device. Live, no timeline, resolution capped. |
-| `SourceType.java` | engine | `FILE` or `SCREEN`. Public, because `EnumParameter` reflects on it from another package. |
+| `ScreenCapturePattern.java` | engine | The live desktop. Public and auto-discovered, same as `VideoPattern`. |
+| `ProjectionControls.java` | engine | The 15 projection controls both patterns share, plus the snapshot-and-project call. |
 | `FramePipeline.java` | both | Owns the decode thread and the buffer: a ring for a file, one slot for a live source. Idempotent start/stop with a bounded join. |
 | `PlaybackClock.java` | engine | The playhead. Pure state: play, speed, and the pending seek target, no I/O. |
 | `VideoFrame.java` | both | A decoded frame plus its place on the timeline. |
@@ -302,7 +328,7 @@ All under `packages/chromatik-video/src/main/java/laserphile/chromatik/video/`.
 - [x] **M1** Skeleton. Package loads in-app, decode thread runs, engine stays non-blocking.
 - [x] **M2** Projection MVP. Full UV projection, all four wrap modes, both background modes, nearest and bilinear.
 - [x] **M3** Transport. Playback clock, play/pause, loop, speed, seek and scrub, ring buffer with back-pressure and a real drop policy.
-- [x] **M4** Screen capture. A live `ScreenCaptureSource` behind the existing `FrameSource` seam, on FFmpeg's per-OS capture device, with single-slot live buffering.
+- [x] **M4** Screen capture. A `Screen Capture` pattern of its own, on FFmpeg's per-OS capture device, behind the existing `FrameSource` seam with single-slot live buffering.
 - [ ] **M5** Polish. BT.709 colour-space correction, gamma, working-resolution downscale, frame pooling, a slimmer uber-jar. (Per-OS build profiles landed early, with the release pipeline.)
 
 Design decisions, open questions, and per-milestone detail live in [`docs/`](docs/): [`PLAN.md`](docs/PLAN.md) is the source of truth, [`PROGRESS.md`](docs/PROGRESS.md) tracks state and carries the decisions log.
