@@ -46,8 +46,10 @@ public class VideoPattern extends LXPattern {
 
   private final LX lx;
 
+  // Empty until the user picks something. A default pointing at a specific clip would be a
+  // file-not-found for everyone who does not happen to have that clip.
   public final StringParameter fileName =
-    new StringParameter("File", "LaserphileVideo/steamed-hams.mp4")
+    new StringParameter("File", "")
       .setDescription("Video file: an absolute path, or a path relative to ~/Chromatik");
   public final TriggerParameter browse =
     new TriggerParameter("Browse").setDescription("Pick a video file");
@@ -164,9 +166,12 @@ public class VideoPattern extends LXPattern {
     this.clock.reset();
 
     final String resolved = resolvePath(this.fileName.getString());
-    if (resolved != null) {
-      this.pipeline.start(resolved);
+    if (resolved == null) {
+      LX.log("[LaserphileVideo] no video selected: use Browse, or type a path into File");
+      return;
     }
+
+    this.pipeline.start(resolved);
   }
 
   /**
