@@ -163,7 +163,8 @@ packages/chromatik-video/
   src/main/java/<pkg>/FrameSource.java  FileVideoSource.java  ScreenCaptureSource.java
   src/main/java/<pkg>/FramePipeline.java  PlaybackClock.java  ProjectionControls.java
   src/main/java/<pkg>/Projector.java  ProjectionParams.java  VideoFrame.java
-  projects/demo.lxp                           (optional one-click demo)
+  projects/demo.lxp                           one-click demo: a grid plus a Video pattern
+  projects/demo-bars.mp4                      its clip, and the colour-measurement fixture
 ```
 
 Everything shared lives in the root pom and is inherited: the compiler settings, the three `provided` LX dependencies, the `lx.package` resource filtering, the shade config, and the `install` profile. The decode stack sits in `dependencyManagement` only, so a future plugin that does no decoding does not inherit 27 MB of FFmpeg. Adding a plugin is covered in [`ADDING-A-PLUGIN.md`](ADDING-A-PLUGIN.md).
@@ -176,10 +177,10 @@ Pushing a `v*` tag publishes a GitHub Release. CI builds one jar per platform on
 
 | Jar | Bundled natives | Size | Verified on |
 |---|---|---|---|
-| `-macos` | `macosx-arm64` + `macosx-x86_64` | 44 MB | `macos-15`, `macos-15-intel` |
-| `-windows` | `windows-x86_64` | 30 MB | `windows-2025` |
-| `-linux-x86_64` | `linux-x86_64` | 27 MB | `ubuntu-24.04` |
-| `-linux-arm64` | `linux-arm64` | 27 MB | `ubuntu-24.04-arm` |
+| `-macos` | `macosx-arm64` + `macosx-x86_64` | 41 MB | `macos-15`, `macos-15-intel` |
+| `-windows` | `windows-x86_64` | 27 MB | `windows-2025` |
+| `-linux-x86_64` | `linux-x86_64` | 25 MB | `ubuntu-24.04` |
+| `-linux-arm64` | `linux-arm64` | 24 MB | `ubuntu-24.04-arm` |
 
 The gate is `ci/NativeLoadCheck.java`, run with Java's single-file source launcher so it needs no build step or test framework. It loads the FFmpeg natives, confirms `lx.package` and `VideoPattern.class` survived shading, and decodes ten frames from `ci/testclip.mp4`, a 2.7 KB H.264/MP4 fixture. H.264 in MP4 is what the plugin gets pointed at in real use, and unlike FFmpeg's synthetic `lavfi` source it is available in every Bytedeco build: the Linux ones ship without the lavfi demuxer.
 
@@ -204,18 +205,18 @@ Each is a coherent, demoable, mergeable unit. See `milestones/M*.md` for the ful
 - **M2. Projection MVP.** `Projector` with full UV projection, wrap and background modes, nearest sampling; a recognisable video projects onto the model.
 - **M3. Transport.** `PlaybackClock` (play/pause, loop, speed, seek/`position`, restart), ring-buffer timing, coalesced scrub, back-pressure and drop policy, bilinear sampling and `level`.
 - **M4. Screen capture.** `ScreenCaptureSource` plus a `ScreenCapturePattern` of its own, live latest-frame path, projection controls shared with Video through `ProjectionControls`.
-- **M5. Polish.** Colour-space and gamma correction, working-resolution auto, frame pooling, error handling, demo `.lxp`, per-OS build profiles, distribution README.
+- **M5. Polish.** Colour-matrix correction, `gamma`, working-resolution auto, recoverable decode errors, demo `.lxp`, a trimmed uber-jar, per-OS build profiles, distribution README. Frame pooling was dropped once the downscale made it pointless.
 
 ## Risks and open questions
 
-- **Colour space** (high impact, easy to miss): video is usually limited-range BT.709 YUV; a naive grab yields washed-out or dark LEDs. Configure swscale for full-range RGB and add `gamma`/`level` params; budget tuning in M5.
-- ~~**Native binary size and macOS Gatekeeper**~~ **(resolved 2026-08-02)**: Bytedeco extracts the dylibs to `~/.javacpp/cache` at runtime, and that works under `LXClassLoader`. Gatekeeper is a non-issue: a jar downloaded through a browser carries `com.apple.quarantine`, but the extracted dylibs are written by ordinary file I/O and do not inherit it, so a v0.1.0 asset downloaded and dragged onto Chromatik plays with no `xattr` step and no signing. Size is handled by one jar per platform (27 to 44 MB); trimming JavaCV's unused presets stays in M5.
+- ~~**Colour space**~~ **(resolved 2026-08-02, M5)**: the worry was that limited-range BT.709 would come out washed out. Measured against FFmpeg's own conversion of the same frame, the range is handled correctly and greys land within 1 or 2 of 255. The real fault is the coefficient set: JavaCV never tells the scaler what the file says, so every file is decoded as standard definition, which costs up to 32 of 255 on a strongly coloured pixel and nothing on a grey one. swscale is not configurable through JavaCV, so `ColorSpaceCorrection` undoes it afterwards. `gamma` and `level` are both controls now; the `gamma` default still wants a real LED test.
+- ~~**Native binary size and macOS Gatekeeper**~~ **(resolved 2026-08-02)**: Bytedeco extracts the dylibs to `~/.javacpp/cache` at runtime, and that works under `LXClassLoader`. Gatekeeper is a non-issue: a jar downloaded through a browser carries `com.apple.quarantine`, but the extracted dylibs are written by ordinary file I/O and do not inherit it, so a v0.1.0 asset downloaded and dragged onto Chromatik plays with no `xattr` step and no signing. Size is handled by one jar per platform (24 to 41 MB), with JavaCV's unused presets trimmed in M5.
 - **FFmpeg licensing**: the default Bytedeco `ffmpeg` artifact is **LGPL** (only the `-gpl` classifier variants are GPL), so using the default build keeps distribution simple. JCodec is permissive (BSD-style). Re-implementing `ImagePattern`'s maths is fine; do not copy proprietary source.
 - **File-path portability**: LX resolves paths via `lx.getMediaFile(Media, path, create)`, absolute paths verbatim (not portable), relative paths under `~/Chromatik/<TypeDir>`. Store the video path **relative** to the package `mediaDir` and resolve at load time via `lx.getMediaFile(...)` so a shared `.lxp` stays portable (the media file must ship alongside). Whether the built-in `ImagePattern` itself stores absolute or relative is unverified (its source is closed), so follow this rule in our own code rather than copying its behaviour.
 - **Two-way `position`**: distinguish user scrub from programmatic playhead updates (echo-suppression flag) to avoid a seek feedback loop.
 - **Thread/lifecycle leaks**: the decode thread and native grabber must stop and close on `onInactive()`, `dispose()`, and source change; `stop()` idempotent with a bounded join.
 - **Seek accuracy**: seeks snap to keyframes; scrubbing is coarse unless we decode forward from the keyframe (adds latency).
-- **Audio**: LX has no audio output, so do not decode the audio track (disable it in the grabber) to save CPU.
+- ~~**Audio**~~ **(resolved 2026-08-02, M5)**: LX has no audio output, and `grabImage()` already demuxes audio packets without decoding them. Measured against a clip with a 320 kbps soundtrack, decoding every frame takes the same time whether the track is left alone or dropped, and neither `setAudioChannels(0)` nor `setAudioStream(-1)` changes what the grabber reports. Nothing to disable.
 - **LX version coupling**: provided scope means the app's LX runs at runtime; pin `lx.version` to the installed Chromatik to avoid silent API drift.
 
 ## Verification

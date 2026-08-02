@@ -46,6 +46,12 @@ No build tools required. You need [Chromatik](https://chromatik.co/) and nothing
 
 The Mac download carries both Apple Silicon and Intel builds, so there's nothing to check first.
 
+### Try it without building a model
+
+[`projects/demo.lxp`](packages/chromatik-video/projects/demo.lxp) is a 30x30 grid with a Video pattern already on it, pointed at [`projects/demo-bars.mp4`](packages/chromatik-video/projects/demo-bars.mp4): colour bars over a grey ramp over a block that sweeps across the loop, so the playhead, looping and speed are all readable at a glance.
+
+Download both, put the clip in `~/Chromatik/LaserphileVideo/`, then open the project. The grid is 900 points, which is under the 1,000 that Chromatik's FREE tier will drive, so it runs real fixtures and not just the preview.
+
 <details>
 <summary><b>Prefer to place the file yourself?</b></summary>
 
@@ -189,10 +195,12 @@ Chromatik generates each panel from these automatically. They are listed in pane
 | `Wrap` | Enum | `CLAMP` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
 | `Background` | Enum | `BLACK` | `BLACK` `CLEAR` | Colour for points rejected by `CLIP` |
 | `Interp` | Enum | `BILINEAR` | `NEAREST` `BILINEAR` | `NEAREST` is blocky, `BILINEAR` is smoother |
+| `Gamma` | Compound | `1` | 1 to 3 | Pulls mid-tones down. Around 2.2 undoes video's own brightness curve, which is what an LED usually wants |
 | `Position` | Compound | `0` | 0 to 1 | Playhead. Follows playback, and seeks when you drag it |
 | `Play` | Boolean | `on` | | Run the playhead |
 | `Loop` | Boolean | `on` | | Start again on reaching the end |
 | `Restart` | Trigger | | | Jump back to the start and play |
+| `Res` | Discrete | `Auto` | `128` `256` `384` `512` `Auto` | Longest edge to decode frames at. `Auto` follows the model's point count. Never enlarges a smaller source |
 | `Browse` | Trigger | | | Pick a video with the native file chooser |
 | `Reload` | Trigger | | | Re-open the current file |
 | `File` | String | empty | | Absolute path, or relative to `~/Chromatik`. Written by `Browse` and saved with the project, no control of its own |
@@ -215,12 +223,14 @@ The same projection controls, minus everything that needs a timeline. `Speed`, `
 | `Wrap` | Enum | `CLAMP` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
 | `Background` | Enum | `BLACK` | `BLACK` `CLEAR` | Colour for points rejected by `CLIP` |
 | `Interp` | Enum | `BILINEAR` | `NEAREST` `BILINEAR` | `NEAREST` is blocky, `BILINEAR` is smoother |
+| `Gamma` | Compound | `1` | 1 to 3 | Pulls mid-tones down. Around 2.2 undoes the display's own brightness curve |
 | `Screen` | Discrete | `0` | 0 to 3 | Which display to capture. Ignored on Windows, which captures the whole desktop |
 | `Cursor` | Boolean | `on` | | Include the mouse pointer |
+| `Res` | Discrete | `Auto` | `128` `256` `384` `512` `Auto` | Longest edge to capture at. `Auto` follows the model's point count. Never enlarges |
 
 There is no capture-rate control: the capture runs at the engine's own frame rate, capped at 60, since there is nothing to gain from grabbing the screen faster than the renderer consumes it.
 
-`Screen` and `Cursor` are read when the capture device opens, so changing either reopens it. The engine frame rate is not watched the same way, because it is a slider and reopening per drag increment would stall the capture for the length of the drag; a new rate applies the next time the device opens, which includes switching the pattern off and on.
+`Screen`, `Cursor` and `Res` are read when the capture device opens, so changing any of them reopens it. The engine frame rate is not watched the same way, because it is a slider and reopening per drag increment would stall the capture for the length of the drag; a new rate applies the next time the device opens, which includes switching the pattern off and on.
 
 ### Knob order on a control surface
 
@@ -235,7 +245,7 @@ The two line up except at knob 2, where Screen Capture has no `Speed` to spend t
 
 The surface order carries on down the panel from there, so the *n*th control you read is the *n*th a surface sees.
 
-Controls held back from the surface entirely sit at the end of the panel, which is what keeps everything ahead of them lined up. On Video that is `Browse`, `Reload` and `File`, all of which go to disk. On Screen Capture it is `Screen` and `Cursor`: each tears down the capture device and opens another, and a screen device can take seconds to open, so a swept knob would thrash it.
+Controls held back from the surface entirely sit at the end of the panel, which is what keeps everything ahead of them lined up. On Video that is `Res`, `Browse`, `Reload` and `File`. On Screen Capture it is `Screen`, `Cursor` and `Res`. `Browse`, `Reload` and `File` go to disk; the rest tear down the current source and open another, and a screen device can take seconds to open, so a swept knob would thrash it.
 
 ## 🧠 How it works
 
@@ -278,7 +288,9 @@ The decode thread owns the FFmpeg grabber and pushes finished frames into a smal
 
 Control flows the other way through a mailbox the decode thread reads between frames. Seeks coalesce to the newest target and carry a generation number, so a fast scrub never flashes footage from a position you've already dragged past. Looping happens entirely on the decode thread, so the seam is gapless: it stamps every frame with a timeline that keeps climbing straight through the loop point, which is the same timeline the playhead runs on.
 
-Frames are currently decoded at their native resolution. Downscaling them on the decode thread is [M5](#-roadmap): LED counts are in the hundreds or thousands, so sampling a few thousand points out of a 4K frame is wasted work, and a small hot buffer is both faster and kinder to the cache.
+Frames are decoded no larger than `Res` says, which on `Auto` comes from the model's point count. Sampling a few thousand points out of a 4K frame is wasted work, and the scaler is already converting every frame so resizing rides along in the same pass. What comes out is small enough to stay in cache while the projection walks it.
+
+Colour is put right on the way out. Video stores brightness and two colour-difference channels, and turning those into red, green and blue needs one set of coefficients for standard-definition footage and another for high-definition. The file says which; JavaCV never passes that answer to the scaler, so every file is decoded as if it were standard definition. That costs up to 32 of 255 on a strongly coloured pixel and nothing at all on a grey one, which reads as a hue and saturation shift rather than as anything obviously broken. The scaler's error is a fixed linear mix of the RGB it produced, so it is undone with another one, per decoded pixel on the decode thread. A channel that arrives sitting on 0 or 255 is left alone: the scaler clamped it before we saw it, and correcting anyway lifts green off a pure magenta bar and turns it dirty.
 
 <details>
 <summary><b>The projection maths</b></summary>
@@ -329,7 +341,7 @@ All under `packages/chromatik-video/src/main/java/laserphile/chromatik/video/`.
 - [x] **M2** Projection MVP. Full UV projection, all four wrap modes, both background modes, nearest and bilinear.
 - [x] **M3** Transport. Playback clock, play/pause, loop, speed, seek and scrub, ring buffer with back-pressure and a real drop policy.
 - [x] **M4** Screen capture. A `Screen Capture` pattern of its own, on FFmpeg's per-OS capture device, behind the existing `FrameSource` seam with single-slot live buffering.
-- [ ] **M5** Polish. BT.709 colour-space correction, gamma, working-resolution downscale, frame pooling, a slimmer uber-jar. (Per-OS build profiles landed early, with the release pipeline.)
+- [x] **M5** Polish. BT.709 colour-space correction, `Gamma`, working-resolution downscale, recoverable decode errors, a one-click demo project, and an uber-jar down from 2,314 classes to 473. (Per-OS build profiles landed early, with the release pipeline. Frame pooling was dropped: the downscale already keeps frames small enough that it earned nothing.)
 
 Design decisions, open questions, and per-milestone detail live in [`docs/`](docs/): [`PLAN.md`](docs/PLAN.md) is the source of truth, [`PROGRESS.md`](docs/PROGRESS.md) tracks state and carries the decisions log.
 
@@ -377,7 +389,8 @@ A few things worth knowing before you touch the code:
 - **`lx.version` is pinned deliberately.** LX and GLX are `provided` scope: Chromatik supplies them at runtime through its `LXClassLoader`. If the pinned version drifts from the installed app, the API mismatch shows up at runtime, not at compile time.
 - **Never relocate the `org.bytedeco` packages in the shade config.** JavaCPP looks its native libraries up as classpath resources by literal path, so relocating those packages breaks native loading in a way that's genuinely unpleasant to debug.
 - **The first `FFmpegFrameGrabber.start()` per JVM costs about 6 seconds** while JavaCPP extracts natives to `~/.javacpp/cache`. Every subsequent start is ~2 ms. It happens on the decode thread, so the UI stays responsive.
-- **`swscale` logs `no accelerated yuv420p->bgr24`** on startup. Benign, but it's the flag for the BT.709 colour-space work parked in M5.
+- **`swscale` logs `no accelerated yuv420p->bgr24`** on startup. Benign: it means the conversion runs unvectorised, not that anything is wrong with it. It's unrelated to the colour-matrix correction, which is applied after the scaler rather than inside it.
+- **The scaler can't be configured through JavaCV.** `FFmpegFrameGrabber` only ever calls `sws_getCachedContext`, `sws_scale` and `sws_freeContext`, never `sws_setColorspaceDetails`, and it keeps its scaler context private. Going around it through a libavfilter graph needs the undecoded frame, and `ImageMode.RAW` keeps only the first of `yuv420p`'s three planes, because a JavaCV `Frame` carries one stride and the format needs three.
 
 ## 📄 Licence
 
