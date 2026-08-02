@@ -11,6 +11,14 @@ import com.google.gson.JsonObject;
  */
 interface Tool {
 
+  /**
+   * Payload key whose value, a base64 PNG, the dispatcher lifts into an image content block.
+   *
+   * <p>Leading underscore because it is not part of any tool's data: it is removed before the rest
+   * of the payload is serialised, so it never reaches the model as text.
+   */
+  String IMAGE_MEMBER = "_png";
+
   /** Stable identifier the client calls. Lowercase, underscore-separated, prefixed {@code lx_}. */
   String name();
 

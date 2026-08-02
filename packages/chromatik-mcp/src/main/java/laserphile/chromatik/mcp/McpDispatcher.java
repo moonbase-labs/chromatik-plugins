@@ -224,8 +224,27 @@ final class McpDispatcher {
    * exhaust a window in a handful of careless calls. One copy, in the form every client renders.
    */
   private JsonObject toolResult(JsonObject payload, ProtocolEra era) {
+    final JsonArray content = new JsonArray();
+
+    // A tool that has something to show puts base64 PNG under this key and the image becomes its
+    // own content block. Only lx_look does, and one reserved key here is a smaller price than
+    // widening the Tool contract so that every tool has to know what a content block is.
+    final String png = payload.has(Tool.IMAGE_MEMBER)
+        ? payload.remove(Tool.IMAGE_MEMBER).getAsString()
+        : null;
+
+    if (png != null) {
+      final JsonObject image = new JsonObject();
+      image.addProperty("type", "image");
+      image.addProperty("data", png);
+      image.addProperty("mimeType", "image/png");
+      content.add(image);
+    }
+
+    content.add(textBlock(JsonRpc.GSON.toJson(payload)));
+
     final JsonObject result = new JsonObject();
-    result.add("content", textContent(JsonRpc.GSON.toJson(payload)));
+    result.add("content", content);
     result.addProperty("isError", false);
 
     return era == ProtocolEra.MODERN ? ModernEnvelope.complete(result) : result;
@@ -240,14 +259,18 @@ final class McpDispatcher {
   }
 
   private JsonArray textContent(String text) {
+    final JsonArray content = new JsonArray();
+    content.add(textBlock(text));
+
+    return content;
+  }
+
+  private JsonObject textBlock(String text) {
     final JsonObject block = new JsonObject();
     block.addProperty("type", "text");
     block.addProperty("text", text);
 
-    final JsonArray content = new JsonArray();
-    content.add(block);
-
-    return content;
+    return block;
   }
 
   private JsonObject capabilities() {

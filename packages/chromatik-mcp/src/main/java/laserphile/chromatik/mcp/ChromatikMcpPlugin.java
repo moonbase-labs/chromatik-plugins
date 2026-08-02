@@ -55,6 +55,7 @@ public class ChromatikMcpPlugin implements LXPlugin {
     final ToolRegistry registry = new ToolRegistry();
     ReadTools.register(registry, lx, bridge, catalog);
     WriteTools.register(registry, lx, bridge, catalog);
+    registry.add(new LookTool(lx));
 
     final McpDispatcher dispatcher = new McpDispatcher(registry, version());
     this.server = new McpHttpServer(new McpHttpHandler(dispatcher));
