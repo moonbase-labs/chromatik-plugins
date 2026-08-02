@@ -47,7 +47,11 @@ public class ChromatikMcpPlugin implements LXPlugin {
 
   @Override
   public void initialize(LX lx) {
+    final EngineBridge bridge = new EngineBridge(lx);
+    final ParameterCatalog catalog = new ParameterCatalog();
+
     final ToolRegistry registry = new ToolRegistry();
+    ReadTools.register(registry, lx, bridge, catalog);
 
     final McpDispatcher dispatcher = new McpDispatcher(registry, version());
     this.server = new McpHttpServer(new McpHttpHandler(dispatcher));

@@ -212,13 +212,20 @@ final class McpDispatcher {
     }
   }
 
+  /**
+   * A tool's payload, as a single JSON text block.
+   *
+   * <p>Deliberately not also sent as {@code structuredContent}. The specification pairs that field
+   * with an {@code outputSchema}, and suggests duplicating it into a text block for clients that
+   * predate it; no tool here declares an output schema, so sending both would mean every response
+   * carrying the same JSON twice. Measured on this server that doubled a catalogue listing from
+   * roughly three thousand characters to six, and context is the scarcest thing an agent working a
+   * lighting rig has: a model with thousands of points and dozens of parameters per device can
+   * exhaust a window in a handful of careless calls. One copy, in the form every client renders.
+   */
   private JsonObject toolResult(JsonObject payload, ProtocolEra era) {
     final JsonObject result = new JsonObject();
     result.add("content", textContent(JsonRpc.GSON.toJson(payload)));
-
-    // The same data twice, deliberately. structuredContent is the machine-readable form, and the
-    // text block is what a client that predates it still shows the model.
-    result.add("structuredContent", payload);
     result.addProperty("isError", false);
 
     return era == ProtocolEra.MODERN ? ModernEnvelope.complete(result) : result;
