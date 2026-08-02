@@ -29,6 +29,7 @@
         <module>packages/chromatik-core</module>
         <module>packages/chromatik-video</module>
         <module>packages/chromatik-screen</module>
+        <module>packages/chromatik-mcp</module>
     </modules>
 
     <properties>
@@ -43,6 +44,12 @@
         -->
         <javacv.version>1.5.11</javacv.version>
         <ffmpeg.version>7.1-1.5.11</ffmpeg.version>
+
+        <!--
+          Pinned to the version LX itself depends on, so a plugin compiling against gson sees
+          exactly the classes Chromatik will hand it at runtime. Bump this only when lx does.
+        -->
+        <gson.version>2.13.1</gson.version>
 
         <maven-compiler-plugin.version>3.8.0</maven-compiler-plugin.version>
         <maven-resources-plugin.version>3.3.1</maven-resources-plugin.version>
@@ -98,6 +105,17 @@
                 <groupId>org.bytedeco</groupId>
                 <artifactId>javacv</artifactId>
                 <version>${javacv.version}</version>
+            </dependency>
+
+            <!--
+              Managed rather than inherited for the same reason as javacv: a plugin that never
+              touches JSON should not have to think about it. Declared at provided scope by the
+              modules that do, since Chromatik already ships gson on its own class path.
+            -->
+            <dependency>
+                <groupId>com.google.code.gson</groupId>
+                <artifactId>gson</artifactId>
+                <version>${gson.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

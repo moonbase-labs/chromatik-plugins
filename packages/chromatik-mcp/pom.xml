@@ -1,0 +1,46 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      relativePath is required: Maven's default is ../pom.xml, which is wrong two levels
+      down. Pointing it at the real file also lets `mvn` run inside this directory without
+      the parent having been installed to ~/.m2 first.
+    -->
+    <parent>
+        <groupId>laserphile</groupId>
+        <artifactId>chromatik-plugins</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>chromatik-mcp</artifactId>
+    <name>Laserphile MCP</name>
+
+    <!--
+      No dependency on chromatik-core. This package puts no frame on the model, so it needs
+      neither the decode stack nor the core-package check the two rendering plugins carry, and
+      it installs on its own.
+
+      gson is the only declared dependency and it is `provided`, so nothing is bundled: the HTTP
+      server is com.sun.net.httpserver from the JDK's jdk.httpserver module, which Chromatik's
+      runtime image includes. That is the whole reason this jar is tens of kilobytes rather than
+      the ten megabytes an embedded servlet container would cost, and the size matters more here
+      than it looks: Chromatik hands every installed package to one shared class loader and
+      registers every public class it finds, so a fat dependency tree is charged to every other
+      plugin's startup as well as this one's.
+
+      The declaration is technically redundant, since gson already arrives transitively from
+      com.heronarts:lx (Maven maps a direct provided scope over a transitive compile scope to
+      provided). It is here so the com.google.gson imports are honest about where they come from,
+      and so the version has somewhere to live. Measured: with only Chromatik's own jar on the
+      class path, com.google.gson.Gson resolves out of glxstudio-1.2.1-jar-with-dependencies.jar.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>
