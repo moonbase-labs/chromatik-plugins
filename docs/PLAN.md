@@ -118,7 +118,7 @@ The two reusable primitives, `mapPointToUV(...)` and `sample(...)`, are source-i
 
 All standard `LXParameter`s so Chromatik renders the panel with no custom UI. Transport parameters no-op when the source is `SCREEN` (we cannot hide them without custom UI, so document the behaviour).
 
-- **Source**: `source` (Enum: FILE, SCREEN), `fileName` (String path), `reload` (Trigger).
+- **Source**: `source` (Enum: FILE, SCREEN), `fileName` (String path), `browse` (Trigger), `reload` (Trigger), `screen` (Discrete 0..3, which display to capture) and `captureFrameRate` (Discrete 5..60) for the SCREEN source. The capture settings are read when the device opens, so changing either reopens it.
 - **Transport** (file only): `play` (Boolean), `loop` (Boolean), `speed` (Compound, roughly 0.1 to 4.0, exponential), `position` (Compound 0 to 1, two-way playhead that also seeks when edited), `restart` (Trigger).
 - **Projection** (mirror `ImagePattern.Image`'s exact field names): `yaw`/`pitch`/`roll`, `translateX/Y/Z`, `scale` (+ `scaleRange`, `scaleX`/`scaleY`), `stretchX`/`stretchY`/`stretchAspect`, `scrollX`/`scrollY`, `imageMode` (Enum: `CLAMP`/`CLIP`/`TILE`/`MIRROR`), `backgroundMode` (Enum: `BLACK`/`CLEAR`).
 - **Sampling / colour**: `interpolation` (Enum NEAREST/BILINEAR), `level` (0 to 1), `gamma` (1 to 3).
@@ -161,7 +161,7 @@ packages/chromatik-video/
   src/main/resources/lx.package
   src/main/java/<pkg>/VideoPattern.java       (public, auto-discovered)
   src/main/java/<pkg>/FrameSource.java  FileVideoSource.java  ScreenCaptureSource.java
-  src/main/java/<pkg>/FramePipeline.java  PlaybackClock.java
+  src/main/java/<pkg>/FramePipeline.java  PlaybackClock.java  SourceType.java
   src/main/java/<pkg>/Projector.java  ProjectionParams.java  VideoFrame.java
   projects/demo.lxp                           (optional one-click demo)
 ```

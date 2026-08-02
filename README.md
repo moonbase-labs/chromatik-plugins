@@ -10,7 +10,7 @@ Play video on LEDs that aren't a screen.
 [![Java 21](https://img.shields.io/badge/Java-21-f89820.svg?style=flat-square&logo=openjdk&logoColor=white)](https://adoptium.net/)
 [![Chromatik 1.2.1](https://img.shields.io/badge/Chromatik-1.2.1-00c8ff.svg?style=flat-square)](https://chromatik.co/)
 [![Platform: macOS · Windows · Linux](https://img.shields.io/badge/Platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-64748b.svg?style=flat-square)](#-install)
-[![Status: M3](https://img.shields.io/badge/Milestone-M3%20of%205-eab308.svg?style=flat-square)](#-roadmap)
+[![Status: M4](https://img.shields.io/badge/Milestone-M4%20of%205-eab308.svg?style=flat-square)](#-roadmap)
 
 [**Download the latest release**](https://github.com/moonbase-labs/chromatik-plugins/releases/latest)
 
@@ -25,7 +25,7 @@ Chromatik ships an `ImagePattern` for still images. It has **no video player**. 
 `VideoPattern` decodes a video on a background thread and projects each frame onto whatever 3D structure you've modelled, sampling a colour per LED through a full UV projection. A flat wall is just the special case where every point shares a `z`.
 
 > [!NOTE]
-> **Status: milestone 3 of 5.** Projection works end to end and is confirmed in-app. The full transport (play/pause, loop, speed, seek and scrub) is code complete and passes its headless harness, with the in-app pass on those controls still to come. See the [roadmap](#-roadmap).
+> **Status: milestone 4 of 5.** Projection works end to end and is confirmed in-app. The full transport (play/pause, loop, speed, seek and scrub) and live screen capture are both code complete and pass their headless harnesses; the in-app pass on the transport controls, and on the real capture device, is still to come. See the [roadmap](#-roadmap).
 
 ## ⬇️ Install
 
@@ -59,6 +59,17 @@ Drop the `.jar` in your Chromatik packages folder and restart the app. Chromatik
 
 </details>
 
+<details>
+<summary><b><code>Source: Screen</code> renders black</b></summary>
+
+Screen capture needs the operating system's permission, and Chromatik has to be the application that holds it. On macOS that's **System Settings → Privacy & Security → Screen & System Audio Recording**: switch Chromatik on, then restart it, since the permission is only picked up at launch.
+
+Without the grant the capture device opens and then waits on a first frame the OS never sends, so the pattern renders black rather than reporting an error. After five seconds of that, the log in `~/Chromatik/Logs` says so.
+
+On Linux this needs an X11 session; a Wayland session has no X screen for FFmpeg to grab.
+
+</details>
+
 Every release is loaded on real hardware of each platform before it ships, so the FFmpeg natives are known to load and decode on all four. Installing and playing end to end inside Chromatik is exercised on macOS, so please [open an issue](https://github.com/moonbase-labs/chromatik-plugins/issues) if another platform misbehaves.
 
 ## 📦 What's in here
@@ -76,6 +87,7 @@ The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` p
 - **Model-agnostic projection.** Works on any `LXModel`: domes, sculptures, strips, matrices. Nothing assumes a grid.
 - **Never blocks the engine.** All decode and colour conversion happen off the LX engine thread. `run()` does a lock-free read and a tight per-point loop.
 - **Full transport.** Play/pause, loop, 0.1x to 4x speed, and a two-way position slider you can scrub. Looping is gapless and scrubbing coalesces, so a fast drag doesn't queue up a hundred seeks.
+- **Live screen capture.** Set `Source` to `Screen` and the desktop goes onto the LEDs in real time, through the same projection controls as a file. Pick the display and the capture rate; a live source keeps only the newest frame, so nothing buffers latency in between. Needs screen-recording permission for Chromatik.
 - **Full projection control.** Yaw, pitch, roll, translate on three axes, scale, per-axis stretch, and scroll.
 - **Four wrap modes.** `CLAMP`, `CLIP`, `TILE`, `MIRROR`, matching the vocabulary of the built-in `ImagePattern`.
 - **Transparent background.** `CLEAR` lets lower LX layers show through where the image doesn't reach.
@@ -163,9 +175,12 @@ Chromatik generates the panel from these automatically.
 
 | Parameter | Type | Default | Range | Description |
 |---|---|---|---|---|
+| `Source` | Enum | `File` | `File` `Screen` | Play a video file, or capture the live desktop |
 | `File` | String | empty | | Absolute path, or relative to `~/Chromatik` |
 | `Browse` | Trigger | | | Pick a video with the native file chooser |
-| `Reload` | Trigger | | | Re-open the file |
+| `Reload` | Trigger | | | Re-open the current source |
+| `Screen` | Discrete | `0` | 0 to 3 | Which display to capture. Ignored on Windows, which captures the whole desktop |
+| `CapFps` | Discrete | `30` | 5 to 60 | Rate to capture the desktop at |
 | `Play` | Boolean | `on` | | Run the playhead |
 | `Loop` | Boolean | `on` | | Start again on reaching the end |
 | `Speed` | Compound | `1` | 0.1 to 4 | Playback rate. Affects the playhead only, never the decode rate |
@@ -194,6 +209,8 @@ A MIDI surface binds its eight device knobs to the first eight of the pattern's 
 | | `Level` | `Speed` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Pitch` | `Roll` |
 
 `Position`, the stretches, the translates and the enums follow, and `Play`, `Loop` and `Restart` sit at the end. The panel order in the table above is set separately and is unchanged by this.
+
+`Browse` and `Reload` are left off the list entirely, and so are `Source`, `Screen` and `CapFps`: each of those tears down the current source and opens another, and a screen device can take seconds to open, so a swept knob would thrash it.
 
 ## 🧠 How it works
 
@@ -267,9 +284,11 @@ All under `packages/chromatik-video/src/main/java/laserphile/chromatik/video/`.
 | File | Thread | Role |
 |---|---|---|
 | `VideoPattern.java` | engine | Orchestrator. Owns the parameters, drives the clock, pipeline, and projector. The only public, auto-discovered class. |
-| `FrameSource.java` | decode | Interface. The seam that lets screen capture drop in later without touching projection. |
+| `FrameSource.java` | decode | Interface. The seam that lets a file and a live screen share one pipeline and one projector. |
 | `FileVideoSource.java` | decode | Wraps `FFmpegFrameGrabber`. Video track only, so the audio is never decoded or seeked. |
-| `FramePipeline.java` | both | Owns the decode thread, the frame ring, and the control mailbox. Idempotent start/stop with a bounded join. |
+| `ScreenCaptureSource.java` | capture | The desktop through FFmpeg's per-OS capture device. Live, no timeline, resolution capped. |
+| `SourceType.java` | engine | `FILE` or `SCREEN`. Public, because `EnumParameter` reflects on it from another package. |
+| `FramePipeline.java` | both | Owns the decode thread and the buffer: a ring for a file, one slot for a live source. Idempotent start/stop with a bounded join. |
 | `PlaybackClock.java` | engine | The playhead. Pure state: play, speed, and the pending seek target, no I/O. |
 | `VideoFrame.java` | both | A decoded frame plus its place on the timeline. |
 | `Projector.java` | engine | The per-point UV projection and sampling loop. |
@@ -283,7 +302,7 @@ All under `packages/chromatik-video/src/main/java/laserphile/chromatik/video/`.
 - [x] **M1** Skeleton. Package loads in-app, decode thread runs, engine stays non-blocking.
 - [x] **M2** Projection MVP. Full UV projection, all four wrap modes, both background modes, nearest and bilinear.
 - [x] **M3** Transport. Playback clock, play/pause, loop, speed, seek and scrub, ring buffer with back-pressure and a real drop policy.
-- [ ] **M4** Screen capture. A live `ScreenCaptureSource` behind the existing `FrameSource` seam.
+- [x] **M4** Screen capture. A live `ScreenCaptureSource` behind the existing `FrameSource` seam, on FFmpeg's per-OS capture device, with single-slot live buffering.
 - [ ] **M5** Polish. BT.709 colour-space correction, gamma, working-resolution downscale, frame pooling, a slimmer uber-jar. (Per-OS build profiles landed early, with the release pipeline.)
 
 Design decisions, open questions, and per-milestone detail live in [`docs/`](docs/): [`PLAN.md`](docs/PLAN.md) is the source of truth, [`PROGRESS.md`](docs/PROGRESS.md) tracks state and carries the decisions log.
