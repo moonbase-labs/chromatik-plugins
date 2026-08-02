@@ -171,46 +171,46 @@ java -cp packages/chromatik-video/target/chromatik-video-*-macos.jar ci/NativeLo
 
 ## 🎛️ Parameters
 
-Chromatik generates the panel from these automatically.
+Chromatik generates the panel from these automatically, as a grid three rows deep. They are listed here in panel order, which is the order the panel reads left to right, top to bottom.
 
 | Parameter | Type | Default | Range | Description |
 |---|---|---|---|---|
-| `Source` | Enum | `File` | `File` `Screen` | Play a video file, or capture the live desktop |
-| `File` | String | empty | | Absolute path, or relative to `~/Chromatik` |
-| `Browse` | Trigger | | | Pick a video with the native file chooser |
-| `Reload` | Trigger | | | Re-open the current source |
-| `Screen` | Discrete | `0` | 0 to 3 | Which display to capture. Ignored on Windows, which captures the whole desktop |
-| `CapFps` | Discrete | `30` | 5 to 60 | Rate to capture the desktop at |
-| `Play` | Boolean | `on` | | Run the playhead |
-| `Loop` | Boolean | `on` | | Start again on reaching the end |
+| `Level` | Compound | `1` | 0 to 1 | Master brightness |
 | `Speed` | Compound | `1` | 0.1 to 4 | Playback rate. Affects the playhead only, never the decode rate |
-| `Position` | Compound | `0` | 0 to 1 | Playhead. Follows playback, and seeks when you drag it |
-| `Restart` | Trigger | | | Jump back to the start and play |
+| `Scale` | Compound | `1` | 0.1 to 10 | Zoom, larger values zoom in |
+| `ScrollX` `ScrollY` | Compound | `0` | -1 to 1 | UV offset, animate for a pan |
 | `Yaw` | Compound | `0` | -180 to 180 | Rotation about the vertical axis |
 | `Pitch` | Compound | `0` | -180 to 180 | Rotation about the horizontal axis |
 | `Roll` | Compound | `0` | -180 to 180 | Rotation about the view axis |
-| `TransX` `TransY` `TransZ` | Compound | `0` | -1 to 1 | Shift the image on each axis |
-| `Scale` | Compound | `1` | 0.1 to 10 | Zoom, larger values zoom in |
+| `Position` | Compound | `0` | 0 to 1 | Playhead. Follows playback, and seeks when you drag it |
 | `StretchX` `StretchY` | Compound | `1` | 0.1 to 10 | Per-axis stretch on top of `Scale` |
-| `ScrollX` `ScrollY` | Compound | `0` | -1 to 1 | UV offset, animate for a pan |
+| `TransX` `TransY` `TransZ` | Compound | `0` | -1 to 1 | Shift the image on each axis |
 | `Wrap` | Enum | `CLAMP` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
 | `Background` | Enum | `BLACK` | `BLACK` `CLEAR` | Colour for points rejected by `CLIP` |
 | `Interp` | Enum | `BILINEAR` | `NEAREST` `BILINEAR` | `NEAREST` is blocky, `BILINEAR` is smoother |
-| `Level` | Compound | `1` | 0 to 1 | Master brightness |
+| `Play` | Boolean | `on` | | Run the playhead |
+| `Loop` | Boolean | `on` | | Start again on reaching the end |
+| `Restart` | Trigger | | | Jump back to the start and play |
+| `Source` | Enum | `File` | `File` `Screen` | Play a video file, or capture the live desktop |
+| `Screen` | Discrete | `0` | 0 to 3 | Which display to capture. Ignored on Windows, which captures the whole desktop |
+| `CapFps` | Discrete | `30` | 5 to 60 | Rate to capture the desktop at |
+| `Browse` | Trigger | | | Pick a video with the native file chooser |
+| `Reload` | Trigger | | | Re-open the current source |
+| `File` | String | empty | | Absolute path, or relative to `~/Chromatik`. Written by `Browse` and saved with the project, no control of its own |
 
 Every `Compound` parameter is modulatable, so any of them can be driven by an LFO, an envelope, or MIDI.
 
 ### Knob order on a control surface
 
-A MIDI surface binds its eight device knobs to the first eight of the pattern's remote controls, and an APC40 has no way to page past the eighth. So those eight are all continuous, in this order:
+A MIDI surface binds its eight device knobs to the first eight of the pattern's remote controls, and an APC40 has no way to page past the eighth. So those eight are all continuous, and they are the first eight controls in the panel, in the same order:
 
 | Knob | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
 | | `Level` | `Speed` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Pitch` | `Roll` |
 
-`Position`, the stretches, the translates and the enums follow, and `Play`, `Loop` and `Restart` sit at the end. The panel order in the table above is set separately and is unchanged by this.
+The surface order carries on down the panel from there, so the *n*th control you read is the *n*th a surface sees, all the way to `Restart`.
 
-`Browse` and `Reload` are left off the list entirely, and so are `Source`, `Screen` and `CapFps`: each of those tears down the current source and opens another, and a screen device can take seconds to open, so a swept knob would thrash it.
+The five after that are held back from the surface, which is why they sit at the end. `Browse` and `Reload` both go to disk. `Source`, `Screen` and `CapFps` tear down the current source and open another, and a screen device can take seconds to open, so a swept knob would thrash it.
 
 ## 🧠 How it works
 
