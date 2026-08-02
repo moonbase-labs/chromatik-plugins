@@ -25,12 +25,134 @@
 
       The platform natives that go with it are declared per dist-* profile below.
     -->
+    <!--
+      javacv is a front end over more than a dozen native libraries, and it depends on all of
+      their Java bindings at compile scope rather than optionally. Left alone, the uber-jar
+      carries OpenCV, OpenBLAS, Tesseract, Leptonica, two Kinect drivers, two RealSense drivers,
+      FlyCapture, libdc1394, videoinput and ARToolKitPlus: roughly 1,900 classes of bindings for
+      natives that are not bundled and could never load. Chromatik scans every class in a package
+      jar, so each one is also a NoClassDefFoundError in the log at startup.
+
+      Only ffmpeg and javacpp are wanted, so the rest are excluded here.
+    -->
     <dependencies>
         <dependency>
             <groupId>org.bytedeco</groupId>
             <artifactId>javacv</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>opencv</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>openblas</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>tesseract</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>leptonica</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>flycapture</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>libdc1394</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>libfreenect</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>libfreenect2</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>librealsense</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>librealsense2</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>videoinput</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.bytedeco</groupId>
+                    <artifactId>artoolkitplus</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
+
+    <!--
+      Dropping those dependencies leaves javacv's own classes for them behind, and they are just
+      as unloadable: OpenCVFrameConverter, LeptonicaFrameConverter, every grabber for a camera we
+      do not ship, and the OpenCL helpers. Keeping only what the decode path reaches is a shorter
+      and more durable rule than listing what to throw away, since a later javacv adds classes to
+      the second list but not to the first.
+
+      The list below is the transitive closure of FFmpegFrameGrabber, Java2DFrameConverter, Frame,
+      FrameGrabber and FrameConverter over javacv's own package, so anything reachable from what
+      the plugin calls is here. Nothing in that closure names another javacv class reflectively,
+      so there is no path the closure misses.
+
+      From javacpp only the Maven plugin mojos go. They are the ones that reference the Maven APIs
+      and so cannot load, and they are plainly build-time code. The rest of its tools package
+      stays: JavaCPP's loader reads each native binding's preset class at runtime to work out
+      which library to extract, those preset classes implement InfoMapper from tools, and dropping
+      the package takes InfoMapper with it. The release gate caught exactly that, refusing to
+      compile against the trimmed jar.
+
+      These filters live here rather than in the parent because they name the decode stack
+      specifically, and a plugin that decodes nothing should not inherit them.
+    -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <filters combine.children="append">
+                                <filter>
+                                    <artifact>org.bytedeco:javacv</artifact>
+                                    <includes>
+                                        <include>org/bytedeco/javacv/FFmpegFrameGrabber*.class</include>
+                                        <include>org/bytedeco/javacv/Frame.class</include>
+                                        <include>org/bytedeco/javacv/Frame$*.class</include>
+                                        <include>org/bytedeco/javacv/FrameConverter.class</include>
+                                        <include>org/bytedeco/javacv/FrameGrabber.class</include>
+                                        <include>org/bytedeco/javacv/FrameGrabber$*.class</include>
+                                        <include>org/bytedeco/javacv/Java2DFrameConverter.class</include>
+                                    </includes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.bytedeco:javacpp</artifact>
+                                    <excludes>
+                                        <exclude>org/bytedeco/javacpp/tools/*Mojo.class</exclude>
+                                        <exclude>org/bytedeco/javacpp/tools/*Mojo$*.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
     <!--
       One profile per distributable jar. Each picks the FFmpeg and JavaCPP natives for its
