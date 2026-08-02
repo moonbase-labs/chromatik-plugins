@@ -185,6 +185,16 @@ Chromatik generates the panel from these automatically.
 
 Every `Compound` parameter is modulatable, so any of them can be driven by an LFO, an envelope, or MIDI.
 
+### Knob order on a control surface
+
+A MIDI surface binds its eight device knobs to the first eight of the pattern's remote controls, and an APC40 has no way to page past the eighth. So those eight are all continuous, in this order:
+
+| Knob | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| | `Level` | `Speed` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Pitch` | `Roll` |
+
+`Position`, the stretches, the translates and the enums follow, and `Play`, `Loop` and `Restart` sit at the end. The panel order in the table above is set separately and is unchanged by this.
+
 ## 🧠 How it works
 
 Two threads, one hand-off, no locks on the hot path.
