@@ -18,3 +18,7 @@ target/
 # Java
 *.class
 hs_err_pid*
+
+# Local decode fixtures. Not distributed with the plugin; stage clips under
+# ~/Chromatik/LaserphileVideo/ instead, which is where VideoPattern looks.
+test-media/
