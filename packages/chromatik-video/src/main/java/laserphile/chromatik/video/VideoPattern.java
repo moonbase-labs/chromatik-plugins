@@ -154,32 +154,43 @@ public class VideoPattern extends LXPattern {
     super(lx);
     this.lx = lx;
 
-    addParameter("source", this.sourceType);
-    addParameter("file", this.fileName);
-    addParameter("browse", this.browse);
-    addParameter("reload", this.reload);
-    addParameter("screen", this.screen);
-    addParameter("captureFrameRate", this.captureFrameRate);
-    addParameter("play", this.play);
-    addParameter("loop", this.loop);
+    // The panel draws the parameters in the order they are added here, filling a row at a time,
+    // and the remote-control list below repeats that order. So the panel reads left to right in
+    // the same order a control surface sees it, starting with the eight knobs.
+    addParameter("level", this.level);
     addParameter("speed", this.speed);
-    addParameter("position", this.position);
-    addParameter("restart", this.restart);
+    addParameter("scale", this.scale);
+    addParameter("scrollX", this.scrollX);
+    addParameter("scrollY", this.scrollY);
     addParameter("yaw", this.yaw);
     addParameter("pitch", this.pitch);
     addParameter("roll", this.roll);
+
+    addParameter("position", this.position);
+    addParameter("stretchX", this.stretchX);
+    addParameter("stretchY", this.stretchY);
     addParameter("translateX", this.translateX);
     addParameter("translateY", this.translateY);
     addParameter("translateZ", this.translateZ);
-    addParameter("scale", this.scale);
-    addParameter("stretchX", this.stretchX);
-    addParameter("stretchY", this.stretchY);
-    addParameter("scrollX", this.scrollX);
-    addParameter("scrollY", this.scrollY);
     addParameter("wrap", this.wrapMode);
     addParameter("background", this.backgroundMode);
     addParameter("interpolation", this.interpolation);
-    addParameter("level", this.level);
+
+    addParameter("play", this.play);
+    addParameter("loop", this.loop);
+    addParameter("restart", this.restart);
+
+    // Everything below is held back from the surface, so it goes last. Anything surface-less added
+    // earlier would offset every control after it and break the panel's match with the knobs.
+    addParameter("source", this.sourceType);
+    addParameter("screen", this.screen);
+    addParameter("captureFrameRate", this.captureFrameRate);
+    addParameter("browse", this.browse);
+    addParameter("reload", this.reload);
+
+    // No control of its own in the panel, which only draws numbers, switches and dropdowns. It is
+    // registered so the chosen path is saved with the project, and it is what Browse writes to.
+    addParameter("file", this.fileName);
 
     setRemoteControls(
       // A MIDI surface binds its eight device knobs to the first eight entries here, so all eight
@@ -209,7 +220,8 @@ public class VideoPattern extends LXPattern {
     // Browse and Reload stay out of the list: both open or re-read a file from disk, which is not
     // something to hand to a control surface. Source, Screen and CapFps stay out for the same
     // reason, more so: each one tears down the current source and opens another, and a screen
-    // device can take seconds to open, so a swept knob would thrash it.
+    // device can take seconds to open, so a swept knob would thrash it. All five are the tail of
+    // the panel, so every control ahead of them lines up with its position on a surface.
 
     // Everything that decides what gets opened reopens the source. The capture settings are
     // fixed at device-open time, so changing one has to go back through the same path.
