@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # The workflow pins action versions, so without this they quietly go stale.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

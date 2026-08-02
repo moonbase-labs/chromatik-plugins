@@ -1,0 +1,147 @@
+name: CI
+
+# Pushing a v* tag is what publishes a release. Everything else just builds and verifies.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  JAVA_VERSION: '21'
+
+jobs:
+  # The platform natives are ordinary Maven dependencies, so one Linux runner can build the
+  # jar for every platform. Doing all four in one job keeps the Maven cache warm across them.
+  build:
+    name: Build all platforms
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      # A released jar should report its real version in Chromatik's package list, so take it
+      # from the tag rather than leaving the pom's -SNAPSHOT in lx.package.
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: mvn -B versions:set -DnewVersion="${GITHUB_REF_NAME#v}" -DgenerateBackupPoms=false
+
+      # Clean once up front, never between profiles: each profile writes a differently named
+      # jar into the same target/, and cleaning in the loop would delete the previous one.
+      - name: Build
+        run: |
+          mvn -B clean
+          for profile in dist-macos dist-windows dist-linux-x86_64 dist-linux-arm64; do
+            echo "::group::$profile"
+            mvn -B package "-P$profile"
+            echo "::endgroup::"
+          done
+
+      # Shade leaves the pre-shade thin jar beside the real one as original-*.jar. Those are
+      # build leftovers, not artifacts, and attaching them to a release would be confusing.
+      - name: Collect jars
+        run: |
+          mkdir -p dist
+          find packages -path '*/target/*.jar' ! -name 'original-*' -exec cp {} dist/ \;
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jars
+          path: dist/
+          if-no-files-found: error
+
+  # Build machine and target machine are different, so every jar is loaded on real hardware of
+  # the platform it claims to support. The Mac jar runs twice because it carries both
+  # architectures, and only an Intel Mac can prove the Intel half works.
+  verify:
+    name: Verify ${{ matrix.name }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            runner: macos-15
+            jar: '*-macos.jar'
+          - name: macOS x86_64
+            runner: macos-15-intel
+            jar: '*-macos.jar'
+          - name: Windows x86_64
+            runner: windows-2025
+            jar: '*-windows.jar'
+          - name: Linux x86_64
+            runner: ubuntu-24.04
+            jar: '*-linux-x86_64.jar'
+          - name: Linux arm64
+            runner: ubuntu-24.04-arm
+            jar: '*-linux-arm64.jar'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: jars
+          path: dist
+
+      - name: Load natives and decode
+        shell: bash
+        run: |
+          jar=$(ls dist/${{ matrix.jar }})
+          echo "checking $jar"
+          java -cp "$jar" ci/NativeLoadCheck.java
+
+  release:
+    name: Publish release
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: jars
+          path: dist
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum *.jar | tee SHA256SUMS
+
+      - name: Release notes
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: sed "s/{{VERSION}}/${VERSION#v}/g" .github/release-notes.md > dist/notes.md
+
+      # gh is preinstalled on the runner, so the release needs no third-party action.
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            dist/*.jar dist/SHA256SUMS \
+            --title "${{ github.ref_name }}" \
+            --notes-file dist/notes.md \
+            --verify-tag
