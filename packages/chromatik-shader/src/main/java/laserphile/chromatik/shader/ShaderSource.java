@@ -226,7 +226,6 @@ final class ShaderSource implements FrameSource {
   private void loadShader() {
     this.loadedModifiedMs = (this.shaderFile == null) ? -1 : this.shaderFile.lastModified();
     this.loadedLength = (this.shaderFile == null) ? -1 : this.shaderFile.length();
-    this.loadCount++;
 
     final String userSource;
 
@@ -251,11 +250,7 @@ final class ShaderSource implements FrameSource {
       return;
     }
 
-    final List<UniformDeclaration> parsed = UniformParser.parse(userSource).stream()
-      .filter(declaration -> !ShaderText.isBuiltIn(declaration.name()))
-      .filter(UniformDeclaration::isControllable)
-      .toList();
-
+    final List<UniformDeclaration> parsed = UniformParser.controls(userSource);
     final String compileLog = this.renderer.compile(prepared, parsed);
 
     if (compileLog != null) {
@@ -274,6 +269,8 @@ final class ShaderSource implements FrameSource {
     this.uniformValues = defaults;
     this.declarations = parsed;
     this.compileError = null;
+
+    published();
   }
 
   /**
@@ -282,6 +279,21 @@ final class ShaderSource implements FrameSource {
    */
   private void fail(String message) {
     this.compileError = message;
+
+    published();
+  }
+
+  /**
+   * Announce that a load has finished, and always last.
+   *
+   * The engine watches this count and reads everything else the moment it moves, so the count has
+   * to be written after the things it is announcing rather than before. Bumping it first leaves a
+   * window in which the engine sees a new load and reads the previous load's uniforms, which it
+   * then keeps, because from its point of view that load has already been dealt with. Writing a
+   * volatile last is also what publishes the ordinary fields written above it.
+   */
+  private void published() {
+    this.loadCount++;
   }
 
   @Override

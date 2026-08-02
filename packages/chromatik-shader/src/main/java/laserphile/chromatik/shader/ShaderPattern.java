@@ -1,8 +1,16 @@
 package laserphile.chromatik.shader;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 
 import laserphile.chromatik.core.FramePipeline;
 import laserphile.chromatik.core.ProjectionControls;
@@ -11,16 +19,28 @@ import laserphile.chromatik.core.VideoFrame;
 import laserphile.chromatik.core.WorkingResolution;
 
 import heronarts.glx.GLX;
+import heronarts.glx.ui.UI2dContainer;
+import heronarts.glx.ui.component.UIKnob;
+import heronarts.glx.ui.component.UILabel;
+import heronarts.glx.ui.component.UISwitch;
 import heronarts.lx.LX;
 import heronarts.lx.LXCategory;
 import heronarts.lx.LXComponent;
+import heronarts.lx.LXSerializable;
 import heronarts.lx.model.LXModel;
 import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.CompoundParameter;
 import heronarts.lx.parameter.DiscreteParameter;
+import heronarts.lx.parameter.LXListenableNormalizedParameter;
+import heronarts.lx.parameter.LXParameter;
+import heronarts.lx.parameter.LXParameterListener;
+import heronarts.lx.parameter.MutableParameter;
 import heronarts.lx.parameter.StringParameter;
 import heronarts.lx.parameter.TriggerParameter;
 import heronarts.lx.pattern.LXPattern;
+import heronarts.lx.studio.LXStudio;
+import heronarts.lx.studio.ui.device.UIDevice;
+import heronarts.lx.studio.ui.device.UIDeviceControls;
 
 /**
  * Renders a GLSL fragment shader onto the LX model, through the same projection controls as a
@@ -41,7 +61,7 @@ import heronarts.lx.pattern.LXPattern;
  */
 @LXCategory("Laserphile")
 @LXComponent.Name("Shader")
-public class ShaderPattern extends LXPattern {
+public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderPattern> {
 
   /**
    * Chromatik cannot express a dependency between packages, so nothing stops this one being
@@ -73,6 +93,23 @@ public class ShaderPattern extends LXPattern {
 
   /** Offered by the file chooser. The contents decide what a file is, not the suffix. */
   private static final String[] SHADER_EXTENSIONS = { "glsl", "frag", "fs", "fsh" };
+
+  /**
+   * Saved under a prefix so that a shader is free to call a uniform whatever it likes without
+   * colliding with a control this pattern already owns. A shader with a uniform called "level"
+   * would otherwise fail to register it, and silently lose the knob.
+   */
+  private static final String UNIFORM_KEY_PREFIX = "uniform-";
+
+  /**
+   * How many of the shader's own knobs come before Speed and Level.
+   *
+   * A control surface binds only its first eight, so this is the split: the shader's uniforms are
+   * the interesting thing to play and go first, but Speed and Level are worth a knob on every
+   * pattern and should not be pushed off the surface by a shader that declares a lot. Anything
+   * past this still appears on the panel and can still be mapped by hand.
+   */
+  private static final int UNIFORM_KNOBS_BEFORE_TRANSPORT = 6;
 
   /**
    * Folder the last browse landed in. Shared by every Shader pattern and kept for the run of the
@@ -110,10 +147,26 @@ public class ShaderPattern extends LXPattern {
     new DiscreteParameter("Res", WorkingResolution.OPTIONS, WorkingResolution.AUTO_OPTION)
       .setDescription("Edge length to render at; Auto follows the model's point count");
 
+  /**
+   * Bumped whenever the shader's controls have been rebuilt, so a device panel knows to draw a
+   * different set of knobs. Not registered as a parameter: it carries a signal rather than a
+   * value, and there would be nothing useful to save.
+   */
+  public final MutableParameter onReload = new MutableParameter("Reload");
+
   /** Orientation, scale, wrapping, sampling and brightness, shared with the other patterns. */
   public final ProjectionControls projection = new ProjectionControls();
 
   private final FramePipeline pipeline = new FramePipeline();
+
+  /**
+   * The shader's own uniforms and the controls driving them, in declaration order.
+   *
+   * Replaced wholesale rather than mutated, because a device panel reads it from the UI thread
+   * while a reload rebuilds it on the engine thread, and a half-rebuilt list is not something to
+   * draw.
+   */
+  private volatile List<UniformControl> uniformControls = List.of();
 
   /** Held so the engine can push the clock at it and read compile results back. */
   private ShaderSource source = null;
@@ -158,37 +211,130 @@ public class ShaderPattern extends LXPattern {
     addParameter("file", this.fileName);
     addParameter("error", this.error);
 
-    setRemoteControls(
-      // A MIDI surface binds its eight device knobs to the first eight entries here, so all eight
-      // are continuous controls. An APC40 cannot page past its eighth knob, so a button or a
-      // trigger in this range costs a knob outright.
-      this.projection.level,
-      this.speed,
-      this.projection.scale,
-      this.projection.scrollX,
-      this.projection.scrollY,
-      this.projection.yaw,
-      this.projection.pitch,
-      this.projection.roll,
-      // Past the eighth knob. Still mappable by hand, just not picked up by a surface. This order
-      // matches the panel, so anything inserted here has to be inserted there too.
-      this.projection.stretchX,
-      this.play,
-      this.projection.stretchY,
-      this.projection.translateX,
-      this.projection.translateY,
-      this.projection.translateZ,
-      this.projection.wrapMode,
-      this.projection.backgroundMode,
-      this.projection.interpolation);
-    // Browse, Reload and Res stay out of the list. The first two read a file from disk, which is
-    // not something to hand to a control surface, and Res tears the context down and builds
-    // another. All three are the tail of the panel, so everything ahead of them lines up.
+    updateRemoteControls();
 
     this.fileName.addListener(parameter -> this.openRequested = true);
     this.workingResolution.addListener(parameter -> this.openRequested = true);
     this.browse.onTrigger(this::showFileChooser);
     this.reload.onTrigger(() -> this.openRequested = true);
+  }
+
+  /**
+   * Put the shader's own knobs in front of everything else on a control surface.
+   *
+   * Rebuilt rather than set once, because how many knobs there are depends on the shader that
+   * happens to be loaded, and that changes whenever a file is chosen or saved.
+   */
+  private void updateRemoteControls() {
+    final List<UniformControl> controls = this.uniformControls;
+    final List<LXListenableNormalizedParameter> remote = new ArrayList<>();
+
+    // Continuous first and only up to the split, so Speed and Level always land on a knob rather
+    // than being pushed past the eighth by a shader with a lot to say.
+    final List<LXListenableNormalizedParameter> continuous = new ArrayList<>();
+    final List<LXListenableNormalizedParameter> switches = new ArrayList<>();
+
+    for (UniformControl control : controls) {
+      if (control.parameter() instanceof BooleanParameter) {
+        switches.add(control.parameter());
+      } else {
+        continuous.add(control.parameter());
+      }
+    }
+
+    final int leading = Math.min(continuous.size(), UNIFORM_KNOBS_BEFORE_TRANSPORT);
+
+    remote.addAll(continuous.subList(0, leading));
+    remote.add(this.speed);
+    remote.add(this.projection.level);
+    remote.addAll(continuous.subList(leading, continuous.size()));
+
+    // A switch costs a knob outright on a surface that cannot page past its eighth, so every one
+    // of them goes after the continuous controls no matter what order they were declared in.
+    remote.addAll(switches);
+    remote.add(this.play);
+
+    // Read out of the shared collections rather than listed again here, so that a change to which
+    // projection control deserves a knob is made once, in the core package, and every pattern
+    // follows. Listing them by hand drifts silently the moment that ordering is revised.
+    appendMappable(remote, this.projection.knobParameters);
+    appendMappable(remote, this.projection.remainingParameters);
+
+    // Browse, Reload and Res stay out of the list. The first two read a file from disk, which is
+    // not something to hand to a control surface, and Res tears the context down and builds
+    // another.
+    setCustomRemoteControls(remote.toArray(new LXListenableNormalizedParameter[0]));
+  }
+
+  /**
+   * Add every control in a collection that a surface could actually drive, in its declared order.
+   *
+   * Everything in these two happens to be normalised today. The check is here because that is a
+   * property of the core package rather than of this one, and a control added there that is not
+   * would otherwise be a class cast at construction.
+   */
+  private static void appendMappable(List<LXListenableNormalizedParameter> remote,
+      LXParameter.Collection collection) {
+    for (LXParameter parameter : collection.values()) {
+      if (parameter instanceof LXListenableNormalizedParameter mappable) {
+        remote.add(mappable);
+      }
+    }
+  }
+
+  /**
+   * Throw away the previous shader's controls and build the new one's.
+   *
+   * Engine thread only. Registering under the declared name is what makes a saved project able to
+   * find its way back to the right knob after the shader has been edited, and what makes a knob
+   * quietly disappear if the uniform it drove was renamed. That is the honest outcome: the value
+   * belonged to a uniform that no longer exists.
+   */
+  private void rebuildUniformControls(List<UniformDeclaration> declarations) {
+    for (UniformControl existing : this.uniformControls) {
+      // Unregistered but deliberately not disposed. Disposing clears a parameter's listener list,
+      // and the panels drawing these knobs have listeners on them: Chromatik's performance device
+      // rebuilds itself the moment the remote controls change below, and the first thing it does
+      // is dispose its old controls, each of which then tries to remove a listener from a
+      // parameter that no longer has a list to remove it from. That throws, once per knob, out of
+      // run() and onto the engine thread. Leaving the parameter intact lets every panel let go of
+      // it in its own time, after which nothing refers to it.
+      removeParameter(existing.parameter(), false);
+    }
+
+    final List<UniformControl> rebuilt = new ArrayList<>();
+
+    for (UniformDeclaration declaration : declarations) {
+      final LXListenableNormalizedParameter parameter = controlFor(declaration);
+
+      addParameter(UNIFORM_KEY_PREFIX + declaration.name(), parameter);
+      rebuilt.add(new UniformControl(declaration, parameter));
+    }
+
+    this.uniformControls = List.copyOf(rebuilt);
+
+    updateRemoteControls();
+
+    // Tells any open device panel that the knobs it drew are no longer the right ones.
+    this.onReload.setValue(this.onReload.getValue() + 1);
+  }
+
+  private static LXListenableNormalizedParameter controlFor(UniformDeclaration declaration) {
+    if (declaration.type().equals("bool")) {
+      return new BooleanParameter(declaration.name(), declaration.defaultValue() >= 0.5)
+        .setDescription(String.format("Shader uniform: bool %s", declaration.name()));
+    }
+
+    // The knob holds a 0 to 1 position and the declared range is applied on the way to the shader,
+    // so a project keeps working when someone widens the range in the file.
+    return new CompoundParameter(declaration.name(), declaration.defaultPosition())
+      .setDescription(String.format("Shader uniform: %s %s, %s to %s",
+        declaration.type(), declaration.name(),
+        trimmed(declaration.minimum()), trimmed(declaration.maximum())));
+  }
+
+  private static String trimmed(double value) {
+    return (value == Math.rint(value)) ? String.valueOf((long) value) : String.valueOf(value);
   }
 
   private void openRenderer() {
@@ -378,6 +524,7 @@ public class ShaderPattern extends LXPattern {
 
     advanceClock(deltaMs);
     reportLoads();
+    pushUniformValues();
 
     final VideoFrame frame = this.pipeline.latestFrame();
 
@@ -425,6 +572,76 @@ public class ShaderPattern extends LXPattern {
 
     if (failure != null) {
       LX.log(String.format("[LaserphileShader] %s%n%s", describeShader(), failure));
+      return;
+    }
+
+    // Only a shader that compiled gets to change the controls. A failed edit leaves the previous
+    // one running, so its knobs are still the ones that mean anything.
+    rebuildUniformControls(rendering.declarations());
+  }
+
+  /** Hand the render thread the shader's uniform values, in the units it declared them in. */
+  private void pushUniformValues() {
+    final ShaderSource rendering = this.source;
+    final List<UniformControl> controls = this.uniformControls;
+
+    if (rendering == null) {
+      return;
+    }
+
+    final float[] values = new float[controls.size()];
+
+    for (int index = 0; index < controls.size(); index++) {
+      values[index] = controls.get(index).value();
+    }
+
+    rendering.setUniformValues(values);
+  }
+
+  /**
+   * Build the shader's controls before the saved values land on them.
+   *
+   * A pattern's parameters normally all exist by the time anything is loaded into them, but these
+   * ones depend on a file whose path is itself in the project being loaded. Left alone, every
+   * uniform value in a saved project would be dropped for want of a parameter to go on. Reading
+   * the shader here is only text work, so it needs no OpenGL and no render thread, which is what
+   * makes it possible this early.
+   */
+  @Override
+  public void load(LX lx, JsonObject object) {
+    final JsonElement savedFile = LXSerializable.Utils.getParameter(object, "file");
+
+    if (savedFile != null && savedFile.isJsonPrimitive()) {
+      this.fileName.setValue(savedFile.getAsString());
+      rebuildUniformControls(declarationsOnDisk());
+    }
+
+    super.load(lx, object);
+
+    // Again, and it has to be after. A device serialises its remote control list, so super.load
+    // restores whatever was saved, and what was saved is the set from before this shader's knobs
+    // existed. Building them first is what gives the saved values somewhere to land; putting them
+    // on a surface has to wait until the restore has had its turn.
+    updateRemoteControls();
+  }
+
+  /**
+   * What the chosen file declares, read straight off disk. Text only, so this is safe anywhere.
+   *
+   * An unreadable or missing file gives no controls rather than an error: the path is reported
+   * elsewhere, and a project opened on a machine without the shader should still open.
+   */
+  private List<UniformDeclaration> declarationsOnDisk() {
+    final File file = chosenFile();
+
+    if (file == null) {
+      return List.of();
+    }
+
+    try {
+      return UniformParser.controls(Files.readString(file.toPath(), StandardCharsets.UTF_8));
+    } catch (IOException unreadable) {
+      return List.of();
     }
   }
 
@@ -432,5 +649,80 @@ public class ShaderPattern extends LXPattern {
     final String raw = this.fileName.getString();
 
     return (raw == null || raw.isBlank()) ? "built-in shader" : raw;
+  }
+
+  private static final float PANEL_COLUMN_WIDTH = 76;
+  private static final float UNIFORM_SECTION_WIDTH = 200;
+  private static final float ERROR_LABEL_HEIGHT = 46;
+
+  /**
+   * Draw the device panel.
+   *
+   * A custom panel rather than the default one for two reasons, both of which the default cannot
+   * do. It builds its controls by walking the parameter list exactly once and never listens for
+   * more, so a uniform knob created when a shader is loaded would never appear. And it draws only
+   * numbers, switches and dropdowns, so the compiler's complaint about a shader that will not
+   * build would have nowhere to go but the log.
+   *
+   * Chromatik resolves a device's controls by checking whether the component is itself a
+   * {@link UIDeviceControls} before it consults the plugin registry, which is why this lives on
+   * the pattern. The registry route needs an {@code LXPlugin}, and that is gated behind a licence
+   * tier this package does not require.
+   */
+  @Override
+  public void buildDeviceControls(LXStudio.UI ui, UIDevice device, ShaderPattern pattern) {
+    device.setLayout(UI2dContainer.Layout.HORIZONTAL, 4);
+    device.setChildSpacing(6);
+
+    addColumn(device, "File",
+      newButton(pattern.browse, PANEL_COLUMN_WIDTH),
+      newButton(pattern.reload, PANEL_COLUMN_WIDTH),
+      newDropMenu(pattern.workingResolution, PANEL_COLUMN_WIDTH));
+
+    addColumn(device, "Shader",
+      newKnob(pattern.speed),
+      newKnob(pattern.projection.level));
+
+    addColumn(device, "Time", newButton(pattern.play, PANEL_COLUMN_WIDTH));
+
+    // Rebuilt from scratch whenever a shader loads, because which knobs belong here is a property
+    // of the file rather than of the pattern.
+    final UI2dContainer uniformSection =
+      UI2dContainer.newHorizontalContainer(UIKnob.HEIGHT, 4)
+        .setChildSpacing(4);
+
+    final UILabel errorLabel = (UILabel) new UILabel(0, 0, UNIFORM_SECTION_WIDTH,
+      ERROR_LABEL_HEIGHT)
+      .setBreakLines(true)
+      .setVisible(false);
+
+    addColumn(device, UNIFORM_SECTION_WIDTH, "Uniforms", uniformSection, errorLabel);
+
+    final LXParameterListener redraw = parameter -> {
+      uniformSection.removeAllChildren();
+
+      for (UniformControl control : pattern.uniformControls) {
+        if (control.parameter() instanceof BooleanParameter switched) {
+          new UISwitch(0, 0, switched).addToContainer(uniformSection);
+        } else {
+          new UIKnob(0, 0, control.parameter()).addToContainer(uniformSection);
+        }
+      }
+
+      final String failure = pattern.error.getString();
+      final boolean failed = (failure != null) && !failure.isBlank();
+
+      errorLabel.setLabel(failed ? failure : "");
+      errorLabel.setVisible(failed);
+
+      device.redraw();
+    };
+
+    // Two signals, because the two things this panel shows change independently: the knobs when a
+    // shader loads, and the message when one fails to.
+    device.addListener(pattern.onReload, redraw);
+    device.addListener(pattern.error, redraw);
+
+    redraw.onParameterChanged(pattern.onReload);
   }
 }

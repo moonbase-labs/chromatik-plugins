@@ -75,6 +75,20 @@ final class UniformParser {
     return declarations;
   }
 
+  /**
+   * The uniforms that should become controls: everything the shader declared, minus the ones this
+   * plugin drives itself and the ones no single knob could sensibly hold.
+   *
+   * Both the render thread and the engine thread ask for this, and they have to agree, because the
+   * engine sends values down as a bare array whose positions are these.
+   */
+  static List<UniformDeclaration> controls(String source) {
+    return parse(source).stream()
+      .filter(declaration -> !ShaderText.isBuiltIn(declaration.name()))
+      .filter(UniformDeclaration::isControllable)
+      .toList();
+  }
+
   /** Just the names, for deciding which builtin declarations the prologue still has to add. */
   static Set<String> declaredNames(String source) {
     final Set<String> names = new LinkedHashSet<>();
