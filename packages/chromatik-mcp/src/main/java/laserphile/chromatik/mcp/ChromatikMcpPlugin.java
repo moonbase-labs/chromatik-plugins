@@ -50,8 +50,11 @@ public class ChromatikMcpPlugin implements LXPlugin {
     final EngineBridge bridge = new EngineBridge(lx);
     final ParameterCatalog catalog = new ParameterCatalog();
 
+    // Read tools first. The order a client sees is a weak steer, and an agent that orients before
+    // it mutates makes better decisions and fewer undo calls.
     final ToolRegistry registry = new ToolRegistry();
     ReadTools.register(registry, lx, bridge, catalog);
+    WriteTools.register(registry, lx, bridge, catalog);
 
     final McpDispatcher dispatcher = new McpDispatcher(registry, version());
     this.server = new McpHttpServer(new McpHttpHandler(dispatcher));
