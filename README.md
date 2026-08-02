@@ -10,7 +10,7 @@ Play video on LEDs that aren't a screen.
 [![Java 21](https://img.shields.io/badge/Java-21-f89820.svg?style=flat-square&logo=openjdk&logoColor=white)](https://adoptium.net/)
 [![Chromatik 1.2.1](https://img.shields.io/badge/Chromatik-1.2.1-00c8ff.svg?style=flat-square)](https://chromatik.co/)
 [![Platform: macOS arm64](https://img.shields.io/badge/Platform-macOS%20arm64-000000.svg?style=flat-square&logo=apple&logoColor=white)](#-requirements)
-[![Status: M2](https://img.shields.io/badge/Milestone-M2%20of%205-eab308.svg?style=flat-square)](#-roadmap)
+[![Status: M3](https://img.shields.io/badge/Milestone-M3%20of%205-eab308.svg?style=flat-square)](#-roadmap)
 
 </div>
 
@@ -23,7 +23,7 @@ Chromatik ships an `ImagePattern` for still images. It has **no video player**. 
 `VideoPattern` decodes a video on a background thread and projects each frame onto whatever 3D structure you've modelled, sampling a colour per LED through a full UV projection. A flat wall is just the special case where every point shares a `z`.
 
 > [!NOTE]
-> **Status: milestone 2 of 5.** Projection works end to end and is confirmed in-app. Playback currently auto-starts and loops with no transport controls, and builds target macOS arm64 only. See the [roadmap](#-roadmap).
+> **Status: milestone 3 of 5.** Projection works end to end and is confirmed in-app. The full transport (play/pause, loop, speed, seek and scrub) is code complete and passes its headless harness, with the in-app pass on those controls still to come. Builds target macOS arm64 only. See the [roadmap](#-roadmap).
 
 ## 📦 What's in here
 
@@ -100,10 +100,10 @@ Then:
 1. **Stage a video** at `~/Chromatik/LaserphileVideo/yourclip.mp4`.
 2. **Launch Chromatik.** The log should show `Loading package content from: …` followed by a `Package:Laserphile Video` line.
 3. **Add the pattern** to a channel: category **Laserphile**, pattern **Video**.
-4. **Point it at your file.** Type `LaserphileVideo/yourclip.mp4` into the `File` box. Editing the field restarts the decode thread on the spot.
+4. **Point it at your file.** Hit `Browse` for the native file chooser, or type `LaserphileVideo/yourclip.mp4` straight into the `File` box. Either way the decode thread restarts on the spot.
 
 > [!TIP]
-> Relative paths resolve under `~/Chromatik/`, absolute paths are used verbatim. Prefer relative: a `.lxp` project that stores an absolute path breaks the moment someone else opens it.
+> Relative paths resolve under `~/Chromatik/`, absolute paths are used verbatim. Prefer relative: a `.lxp` project that stores an absolute path breaks the moment someone else opens it. `Browse` handles this for you, storing anything under `~/Chromatik` as a relative path.
 
 > [!IMPORTANT]
 > On Chromatik's FREE tier, Art-Net, sACN, DDP, and OPC drive real fixtures for models up to **1,000 points**, with rendering capped separately at 20,000. Develop and test against the 3D preview and you stay well inside both. Go over the output cap and Chromatik holds output back for as long as the model stays over, logging `Network output is disabled due to license restrictions.` Rigs above 1,000 points want a paid tier or an external output server.
