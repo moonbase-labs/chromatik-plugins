@@ -4,24 +4,34 @@ import org.bytedeco.ffmpeg.global.avutil;
 import org.bytedeco.ffmpeg.global.swscale;
 import org.bytedeco.javacpp.Loader;
 import java.io.File;
+import java.util.jar.JarFile;
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 
 /**
- * Release gate for one built plugin jar. Run it against the jar itself:
+ * Release gate for a built release. The core jar goes on the classpath, because that is the one
+ * carrying the natives, and every plugin jar is named as an argument:
  *
  * <pre>
- *   java -cp packages/chromatik-video/target/chromatik-video-0.0.1-SNAPSHOT-macos.jar \
- *        ci/NativeLoadCheck.java
+ *   java -cp packages/chromatik-core/target/chromatik-core-0.1.0-SNAPSHOT-macos.jar \
+ *        ci/NativeLoadCheck.java \
+ *        packages/chromatik-video/target/chromatik-video-0.1.0-SNAPSHOT.jar \
+ *        packages/chromatik-screen/target/chromatik-screen-0.1.0-SNAPSHOT.jar
  * </pre>
  *
  * Java's single-file source launcher compiles and runs this in one step, so the check needs no
- * build step, no test framework, and no dependency of its own.
+ * build step, no test framework, and no dependency of its own. Compiling against the classpath is
+ * itself part of the gate: it is what caught the core jar being trimmed too far, when dropping
+ * JavaCPP's tools package took InfoMapper with it and this file stopped compiling.
  *
  * CI runs it once per platform on real hardware of that platform. That is the only way to catch
  * the failure this guards against: a jar whose bundled FFmpeg native cannot be extracted or
  * loaded on the machine it was shipped to. Everything else about the build can look perfect and
  * the plugin will still do nothing.
+ *
+ * Plugin jars are opened directly rather than read off the classpath. A classpath lookup returns
+ * the first match and would happily report every plugin healthy on the strength of one valid jar,
+ * which is exactly the mistake worth catching when a release ships several.
  *
  * Exits non-zero on the first failure, since a jar that fails any of these should not ship.
  */
@@ -49,7 +59,12 @@ public class NativeLoadCheck {
     System.out.println("platform: " + Loader.Detector.getPlatform());
 
     checkNativesLoad();
-    checkJarContents();
+    checkCorePackage();
+
+    for (String pluginJar : args) {
+      checkPluginJar(pluginJar);
+    }
+
     checkDecode();
 
     System.out.println("OK");
@@ -69,20 +84,66 @@ public class NativeLoadCheck {
   }
 
   /**
-   * Chromatik finds a package by looking for lx.package at the jar root, then reflects over the
-   * public LXPattern subclasses it finds. All of it has to survive shading or the jar installs and
-   * silently contributes nothing, and a jar missing one of the two patterns would otherwise look
-   * perfectly healthy here.
-   *
-   * The patterns are checked as resources rather than loaded, because they extend LXPattern and
-   * LX is a provided dependency: it is deliberately absent from this jar and from this classpath.
+   * Chromatik finds a package by looking for lx.package at the jar root, so the core jar has to
+   * carry one or it installs as nothing at all. Its shared classes have to survive shading too,
+   * since every plugin resolves them from here.
    */
-  private static void checkJarContents() {
+  private static void checkCorePackage() {
     requireResource("lx.package");
-    requireResource("laserphile/chromatik/video/VideoPattern.class");
-    requireResource("laserphile/chromatik/video/ScreenCapturePattern.class");
+    requireResource("laserphile/chromatik/core/FramePipeline.class");
+    requireResource("laserphile/chromatik/core/ProjectionControls.class");
 
-    System.out.println("lx.package, VideoPattern and ScreenCapturePattern present");
+    System.out.println("core: lx.package and the shared classes present");
+  }
+
+  /**
+   * Each plugin jar must be a package in its own right and must carry its pattern.
+   *
+   * Two things are worth failing on beyond the obvious. A plugin that has quietly re-bundled the
+   * decode stack, by taking its dependency at compile scope instead of provided, still works and
+   * still passes every other check; the only visible symptom is the jar being enormous and
+   * duplicating every one of the core's classes once installed alongside it. And a plugin whose
+   * pattern class went missing in shading installs and contributes nothing.
+   */
+  private static void checkPluginJar(String path) throws Exception {
+    final File jar = new File(path);
+
+    if (!jar.isFile()) {
+      throw new IllegalStateException("no such plugin jar: " + path);
+    }
+
+    boolean hasPackageFile = false;
+    boolean hasPattern = false;
+    int bundledDecodeClasses = 0;
+
+    try (JarFile contents = new JarFile(jar)) {
+      for (String entry : contents.stream().map(java.util.zip.ZipEntry::getName).toList()) {
+        if (entry.equals("lx.package")) {
+          hasPackageFile = true;
+        } else if (entry.startsWith("org/bytedeco/")) {
+          bundledDecodeClasses++;
+        } else if (entry.startsWith("laserphile/chromatik/") && entry.endsWith("Pattern.class")) {
+          hasPattern = true;
+        }
+      }
+    }
+
+    if (!hasPackageFile) {
+      throw new IllegalStateException("no lx.package at the root of " + jar.getName());
+    }
+
+    if (!hasPattern) {
+      throw new IllegalStateException("no pattern class in " + jar.getName());
+    }
+
+    if (bundledDecodeClasses > 0) {
+      throw new IllegalStateException(String.format(
+        "%s bundles %d org/bytedeco entries. Its dependency on chromatik-core should be provided, "
+          + "not compile, or it will duplicate every class the core package registers.",
+        jar.getName(), bundledDecodeClasses));
+    }
+
+    System.out.printf("%s: package, pattern, and no bundled decode stack%n", jar.getName());
   }
 
   private static void checkDecode() throws Exception {

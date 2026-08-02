@@ -35,7 +35,7 @@ jobs:
 
       # The tag is the single source of truth for a release version, so it has to be a valid one.
       # Rejecting it here costs seconds; a bad version discovered later is baked into lx.package,
-      # into four published filenames, and into whatever people already downloaded.
+      # into every published filename, and into whatever people already downloaded.
       #
       # Semver, minus build metadata: a '+' is legal in semver but makes a mess of a download URL
       # and carries no precedence meaning, so there is nothing to gain by allowing it.
@@ -62,6 +62,10 @@ jobs:
 
       # Clean once up front, never between profiles: each profile writes a differently named
       # jar into the same target/, and cleaning in the loop would delete the previous one.
+      #
+      # The profiles belong to chromatik-core, the only module that bundles a native. The loop
+      # runs at the root anyway, so the two plugin jars are rebuilt on each pass and overwrite
+      # themselves with identical content, which is wasteful but keeps this a single command.
       - name: Build
         run: |
           mvn -B clean
@@ -79,6 +83,22 @@ jobs:
           find packages -path '*/target/*.jar' ! -name 'original-*' -exec cp {} dist/ \;
           ls -l dist
 
+      # A plugin whose dependency on chromatik-core slipped from provided to compile scope still
+      # builds, still passes the release gate, and still works. The only symptom is that shade
+      # inlined the whole decode stack, so the jar is a thousand times bigger and every class it
+      # duplicates becomes an error in Chromatik's log once both packages are installed. Size is
+      # the cheapest thing that notices.
+      - name: Plugin jars carry no decode stack
+        run: |
+          for jar in dist/chromatik-video-*.jar dist/chromatik-screen-*.jar; do
+            size=$(stat -c%s "$jar")
+            echo "$jar is $size bytes"
+            if [ "$size" -gt 1048576 ]; then
+              echo "::error::$jar is over 1 MB, so it has bundled the decode stack. Its chromatik-core dependency should be provided scope."
+              exit 1
+            fi
+          done
+
       - uses: actions/upload-artifact@v7
         with:
           name: jars
@@ -86,8 +106,10 @@ jobs:
           if-no-files-found: error
 
   # Build machine and target machine are different, so every jar is loaded on real hardware of
-  # the platform it claims to support. The Mac jar runs twice because it carries both
-  # architectures, and only an Intel Mac can prove the Intel half works.
+  # the platform it claims to support. Only chromatik-core carries a native, so only it varies by
+  # platform; the plugin jars are the same everywhere and get checked on every leg for free. The
+  # Mac jar runs twice because it carries both architectures, and only an Intel Mac can prove the
+  # Intel half works.
   verify:
     name: Verify ${{ matrix.name }}
     needs: build
@@ -98,19 +120,19 @@ jobs:
         include:
           - name: macOS arm64
             runner: macos-15
-            jar: '*-macos.jar'
+            jar: 'chromatik-core-*-macos.jar'
           - name: macOS x86_64
             runner: macos-15-intel
-            jar: '*-macos.jar'
+            jar: 'chromatik-core-*-macos.jar'
           - name: Windows x86_64
             runner: windows-2025
-            jar: '*-windows.jar'
+            jar: 'chromatik-core-*-windows.jar'
           - name: Linux x86_64
             runner: ubuntu-24.04
-            jar: '*-linux-x86_64.jar'
+            jar: 'chromatik-core-*-linux-x86_64.jar'
           - name: Linux arm64
             runner: ubuntu-24.04-arm
-            jar: '*-linux-arm64.jar'
+            jar: 'chromatik-core-*-linux-arm64.jar'
     steps:
       - uses: actions/checkout@v7
 
@@ -124,12 +146,18 @@ jobs:
           name: jars
           path: dist
 
+      # Only the core jar goes on the classpath, because it is the one carrying the natives. The
+      # plugin jars are arguments rather than classpath entries: the check has to open each one
+      # individually to say anything true about it, and passing them as arguments also sidesteps
+      # the classpath separator being ';' on Windows even under bash.
       - name: Load natives and decode
         shell: bash
         run: |
-          jar=$(ls dist/${{ matrix.jar }})
-          echo "checking $jar"
-          java -cp "$jar" ci/NativeLoadCheck.java
+          core=$(ls dist/${{ matrix.jar }})
+          echo "checking $core against the plugin jars"
+          java -cp "$core" ci/NativeLoadCheck.java \
+            dist/chromatik-video-*.jar \
+            dist/chromatik-screen-*.jar
 
   release:
     name: Publish release
