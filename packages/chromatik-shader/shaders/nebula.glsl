@@ -117,5 +117,10 @@ void main(void) {
 
   curr_color += gradient;
 
-  gl_FragColor = vec4(curr_color, 1.0);
+  // Not in the original, and it needs one. The cloud alone reaches about 10 before the stars are
+  // added, and how far past 1 it goes depends on the clock: left alone this is merely bright for
+  // the first half minute and then a flat white rectangle for good. Rolling the highlights off
+  // instead of clipping them keeps the faint end exactly where it was and simply refuses to go
+  // over 1, at any time and at any star speed.
+  gl_FragColor = vec4(curr_color / (1.0 + curr_color), 1.0);
 }
