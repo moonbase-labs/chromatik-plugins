@@ -145,7 +145,7 @@ Changes we add:
   - JavaCV: `org.bytedeco:javacv:1.5.11` + `org.bytedeco:javacpp:1.5.11` + `org.bytedeco:ffmpeg:7.1-1.5.11`, pulling the **single `macosx-arm64` classifier** on `ffmpeg` and `javacpp` (the arm64 ffmpeg native is ~18.6 MB). Do **not** use the `javacv-platform`/`ffmpeg-platform` aggregators (they pull every OS). The default `ffmpeg` artifact is **LGPL**; the `-gpl` classifier variants are GPL, avoid them.
   - JCodec: `org.jcodec:jcodec:0.2.5` + `org.jcodec:jcodec-javase:0.2.5` (pure Java, ~2 MB, no classifiers). Coverage is narrow: H.264 Main-profile decode, MPEG-1/2, ProRes, VP8 I-frames, containers MP4/MOV/MKV. **No HEVC, VP9, or AV1.** If the real footage is outside this set, JavaCV is forced.
 - **Add `maven-shade-plugin`** (the template has none) to produce an uber-jar containing the decode classes and natives while the LX/GLX deps stay out. For JavaCV: keep the `org/bytedeco/**/<platform>/` resource paths **verbatim** (do not relocate those packages, or JavaCPP's resource lookup breaks), and set `-Dorg.bytedeco.javacpp.cachedir.nosubdir=true` so JavaCPP extracts the dylibs correctly from a single uber-jar (it loads them as classpath resources and extracts to `~/.javacpp/cache`).
-- If JavaCV wins the spike, its FFmpeg natives are large, so build **per-OS/arch jars via Maven profiles** and have the user install the one matching their platform. Ship macOS arm64 first (the dev machine). JCodec would avoid this entirely (one small jar), a real factor in the decision. Those profiles belong in the root pom, so one platform switch applies to every plugin at once.
+- FFmpeg natives are large, so each platform gets **its own jar via a `dist-*` Maven profile** in the module that bundles them, and the user installs the one for their machine. The natives are ordinary Maven dependencies, so any machine builds any target: no cross-compilation, and one CI runner produces the full set. Mac ships as a single jar carrying both `macosx-arm64` and `macosx-x86_64`, since making a non-developer identify their own CPU costs more than the ~17 MB it saves. See "Distribution" below.
 
 ### Repo layout
 
@@ -153,8 +153,11 @@ The repo is a **Maven multi-module build**, one module per Chromatik content pac
 
 ```
 pom.xml                                       parent + aggregator, packaging=pom
+.github/workflows/ci.yml                      build, per-platform verify, tag-triggered release
+.github/release-notes.md                      release body template
+ci/NativeLoadCheck.java                       the per-platform release gate
 packages/chromatik-video/
-  pom.xml                                     ~15 lines: parent, artifactId, name, extra deps
+  pom.xml                                     parent, artifactId, name, deps, dist-* profiles
   src/main/resources/lx.package
   src/main/java/<pkg>/VideoPattern.java       (public, auto-discovered)
   src/main/java/<pkg>/FrameSource.java  FileVideoSource.java  ScreenCaptureSource.java
@@ -163,9 +166,28 @@ packages/chromatik-video/
   projects/demo.lxp                           (optional one-click demo)
 ```
 
-Everything shared lives in the root pom and is inherited: the compiler settings, the three `provided` LX dependencies, the `lx.package` resource filtering, the shade config, and the `install` profile. The decode stack sits in `dependencyManagement` only, so a future plugin that does no decoding does not inherit 22 MB of FFmpeg. Adding a plugin is covered in [`ADDING-A-PLUGIN.md`](ADDING-A-PLUGIN.md).
+Everything shared lives in the root pom and is inherited: the compiler settings, the three `provided` LX dependencies, the `lx.package` resource filtering, the shade config, and the `install` profile. The decode stack sits in `dependencyManagement` only, so a future plugin that does no decoding does not inherit 27 MB of FFmpeg. Adding a plugin is covered in [`ADDING-A-PLUGIN.md`](ADDING-A-PLUGIN.md).
 
 `mvn package` and `mvn -Pinstall install` at the repo root build and install every plugin; add `-pl :chromatik-<name>` to target one.
+
+### Distribution
+
+Pushing a `v*` tag publishes a GitHub Release. CI builds one jar per platform on a single Linux runner, then loads each jar on real hardware of the platform it targets before anything is published:
+
+| Jar | Bundled natives | Size | Verified on |
+|---|---|---|---|
+| `-macos` | `macosx-arm64` + `macosx-x86_64` | 44 MB | `macos-15`, `macos-15-intel` |
+| `-windows` | `windows-x86_64` | 30 MB | `windows-2025` |
+| `-linux-x86_64` | `linux-x86_64` | 27 MB | `ubuntu-24.04` |
+| `-linux-arm64` | `linux-arm64` | 27 MB | `ubuntu-24.04-arm` |
+
+The gate is `ci/NativeLoadCheck.java`, run with Java's single-file source launcher so it needs no build step or test framework. It loads the FFmpeg natives, confirms `lx.package` and `VideoPattern.class` survived shading, and decodes ten frames from FFmpeg's synthetic `lavfi` `testsrc`, so no fixture file is involved.
+
+Runner labels are pinned rather than floating: `macos-13` was retired in December 2025 and `macos-latest` moved to macOS 26 in July 2026, so `-latest` labels move under you. GitHub has said Intel macOS runners end in Fall 2027, which is when `macosx-x86_64` stops being verifiable on free hosted runners.
+
+The tag supplies the version (`mvn versions:set` from `${GITHUB_REF_NAME#v}`), so the pom stays on `-SNAPSHOT` and the released jar still reports a real version in Chromatik's package list.
+
+For installers, Chromatik takes a jar dragged onto its window (`GLX.importContentJar`) or added via **+** in **CONTENT → PACKAGES**, so the non-developer path needs no terminal and no folder navigation on any platform.
 
 Package namespace: **`laserphile.chromatik.video`** (Laserphile brand; `laserphile.chromatik` is the umbrella for sibling packages, `.video` is this one). This is the `<pkg>` in every path above, and each module owns its own `laserphile.chromatik.*` subpackage.
 

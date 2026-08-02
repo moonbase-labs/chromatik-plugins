@@ -9,8 +9,10 @@ Play video on LEDs that aren't a screen.
 [![License: MIT](https://img.shields.io/badge/License-MIT-8b5cf6.svg?style=flat-square)](LICENSE)
 [![Java 21](https://img.shields.io/badge/Java-21-f89820.svg?style=flat-square&logo=openjdk&logoColor=white)](https://adoptium.net/)
 [![Chromatik 1.2.1](https://img.shields.io/badge/Chromatik-1.2.1-00c8ff.svg?style=flat-square)](https://chromatik.co/)
-[![Platform: macOS arm64](https://img.shields.io/badge/Platform-macOS%20arm64-000000.svg?style=flat-square&logo=apple&logoColor=white)](#-requirements)
+[![Platform: macOS · Windows · Linux](https://img.shields.io/badge/Platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-64748b.svg?style=flat-square)](#-install)
 [![Status: M3](https://img.shields.io/badge/Milestone-M3%20of%205-eab308.svg?style=flat-square)](#-roadmap)
+
+[**Download the latest release**](https://github.com/moonbase-labs/chromatik-plugins/releases/latest)
 
 </div>
 
@@ -23,7 +25,52 @@ Chromatik ships an `ImagePattern` for still images. It has **no video player**. 
 `VideoPattern` decodes a video on a background thread and projects each frame onto whatever 3D structure you've modelled, sampling a colour per LED through a full UV projection. A flat wall is just the special case where every point shares a `z`.
 
 > [!NOTE]
-> **Status: milestone 3 of 5.** Projection works end to end and is confirmed in-app. The full transport (play/pause, loop, speed, seek and scrub) is code complete and passes its headless harness, with the in-app pass on those controls still to come. Builds target macOS arm64 only. See the [roadmap](#-roadmap).
+> **Status: milestone 3 of 5.** Projection works end to end and is confirmed in-app. The full transport (play/pause, loop, speed, seek and scrub) is code complete and passes its headless harness, with the in-app pass on those controls still to come. See the [roadmap](#-roadmap).
+
+## ⬇️ Install
+
+No build tools required. You need [Chromatik](https://chromatik.co/) and nothing else.
+
+1. **Download** the file for your computer from the [latest release](https://github.com/moonbase-labs/chromatik-plugins/releases/latest).
+
+   | Your computer | File |
+   |---|---|
+   | **Mac** (any, Apple Silicon or Intel) | `chromatik-video-<version>-macos.jar` |
+   | **Windows** | `chromatik-video-<version>-windows.jar` |
+   | Linux (Intel/AMD) | `chromatik-video-<version>-linux-x86_64.jar` |
+   | Linux (ARM, e.g. Raspberry Pi) | `chromatik-video-<version>-linux-arm64.jar` |
+
+2. **Drag it onto the Chromatik window.** Chromatik installs it for you.
+3. In the **CONTENT** tab, click **Reload Package Content**.
+4. Add a pattern to a channel: category **Laserphile**, pattern **Video**. Click **Browse** and pick a file.
+
+The Mac download carries both Apple Silicon and Intel builds, so there's nothing to check first.
+
+<details>
+<summary><b>Prefer to place the file yourself?</b></summary>
+
+Drop the `.jar` in your Chromatik packages folder and restart the app. Chromatik creates the folder the first time it runs.
+
+| | |
+|---|---|
+| macOS | `~/Chromatik/Packages` |
+| Windows | `C:\Users\<you>\Chromatik\Packages` |
+| Linux | `~/Chromatik/Packages` |
+
+</details>
+
+<details>
+<summary><b>macOS: pattern loads but no video plays</b></summary>
+
+macOS tags files downloaded through a browser, which can stop the bundled FFmpeg libraries loading. Clear the tag and restart Chromatik:
+
+```bash
+xattr -dr com.apple.quarantine ~/Chromatik/Packages/chromatik-video-*-macos.jar
+```
+
+</details>
+
+Every release is loaded on real hardware of each platform before it ships, so the FFmpeg natives are known to load and decode on all four. Playing end to end inside Chromatik is exercised regularly on macOS only, so please [open an issue](https://github.com/moonbase-labs/chromatik-plugins/issues) if another platform misbehaves.
 
 ## 📦 What's in here
 
@@ -49,15 +96,13 @@ The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` p
 
 ## 🔧 Requirements
 
+Only for building from source. Installing a release needs none of this.
+
 | | Version | Notes |
 |---|---|---|
 | **JDK** | 21 | [Temurin](https://adoptium.net/) recommended, to match Chromatik's own runtime |
 | **Maven** | 3.9+ | |
 | **Chromatik** | 1.2.1 | Pinned via `lx.version` in the root `pom.xml` |
-| **Platform** | macOS arm64 | See the warning below |
-
-> [!WARNING]
-> **The build is currently macOS arm64 only.** The root `pom.xml` hardcodes `<native.classifier>macosx-arm64</native.classifier>`, so the FFmpeg native bundled into the jar only loads on Apple Silicon. Building for another platform means changing that one property to a classifier Bytedeco publishes (`linux-x86_64`, `windows-x86_64`, `macosx-x86_64`). Proper per-OS build profiles are [M5](#-roadmap), and living in the root pom means they'll apply to every plugin at once.
 
 <details>
 <summary><b>Setting up JDK 21 on macOS</b></summary>
@@ -82,28 +127,43 @@ mvn -version     # should report the Temurin 21 JAVA_HOME
 
 </details>
 
-## 🚀 Quick start
+## 🚀 Build from source
 
 ```bash
 git clone https://github.com/moonbase-labs/chromatik-plugins.git
 cd chromatik-plugins
 
-# Build every plugin's uber-jar into packages/*/target/
+# Build for this Mac, into packages/*/target/
 mvn package
 
-# Build them and drop them into ~/Chromatik/Packages
+# Build and drop into ~/Chromatik/Packages
 mvn -Pinstall install
 ```
 
 Then:
 
-1. **Stage a video** at `~/Chromatik/LaserphileVideo/yourclip.mp4`.
-2. **Launch Chromatik.** The log should show `Loading package content from: …` followed by a `Package:Laserphile Video` line.
-3. **Add the pattern** to a channel: category **Laserphile**, pattern **Video**.
-4. **Point it at your file.** Hit `Browse` for the native file chooser, or type `LaserphileVideo/yourclip.mp4` straight into the `File` box. Either way the decode thread restarts on the spot.
+1. **Launch Chromatik.** The log should show `Loading package content from: …` followed by a `Package:Laserphile Video` line.
+2. **Add the pattern** to a channel: category **Laserphile**, pattern **Video**.
+3. **Pick a video.** Click `Browse`, or type a path into the `File` box. Either way the decode thread restarts on the spot.
+
+A plain `mvn package` builds the macOS jar, which is the one this repo is developed against. Pass a profile to build for somewhere else:
+
+```bash
+mvn package -Pdist-windows
+mvn package -Pdist-linux-x86_64
+mvn package -Pdist-linux-arm64
+```
+
+Each produces one jar named for its platform. There's no cross-compilation involved, the FFmpeg native is an ordinary Maven dependency, so any machine can build any target.
+
+Check a jar before shipping it. This loads its bundled natives and decodes ten frames, and is the same gate [CI](.github/workflows/ci.yml) runs on real hardware of every platform:
+
+```bash
+java -cp packages/chromatik-video/target/chromatik-video-*-macos.jar ci/NativeLoadCheck.java
+```
 
 > [!TIP]
-> Relative paths resolve under `~/Chromatik/`, absolute paths are used verbatim. Prefer relative: a `.lxp` project that stores an absolute path breaks the moment someone else opens it. `Browse` handles this for you, storing anything under `~/Chromatik` as a relative path.
+> Relative paths resolve under `~/Chromatik/`, absolute paths are used verbatim. `Browse` already stores anything under `~/Chromatik` as a relative path, which keeps a `.lxp` project working when someone else opens it.
 
 > [!IMPORTANT]
 > On Chromatik's FREE tier, Art-Net, sACN, DDP, and OPC drive real fixtures for models up to **1,000 points**, with rendering capped separately at 20,000. Develop and test against the 3D preview and you stay well inside both. Go over the output cap and Chromatik holds output back for as long as the model stays over, logging `Network output is disabled due to license restrictions.` Rigs above 1,000 points want a paid tier or an external output server.
@@ -114,7 +174,7 @@ Chromatik generates the panel from these automatically.
 
 | Parameter | Type | Default | Range | Description |
 |---|---|---|---|---|
-| `File` | String | `LaserphileVideo/steamed-hams.mp4` | | Absolute path, or relative to `~/Chromatik` |
+| `File` | String | empty | | Absolute path, or relative to `~/Chromatik` |
 | `Browse` | Trigger | | | Pick a video with the native file chooser |
 | `Reload` | Trigger | | | Re-open the file |
 | `Play` | Boolean | `on` | | Run the playhead |
@@ -225,7 +285,7 @@ All under `packages/chromatik-video/src/main/java/laserphile/chromatik/video/`.
 - [x] **M2** Projection MVP. Full UV projection, all four wrap modes, both background modes, nearest and bilinear.
 - [x] **M3** Transport. Playback clock, play/pause, loop, speed, seek and scrub, ring buffer with back-pressure and a real drop policy.
 - [ ] **M4** Screen capture. A live `ScreenCaptureSource` behind the existing `FrameSource` seam.
-- [ ] **M5** Polish. BT.709 colour-space correction, gamma, working-resolution downscale, frame pooling, per-OS build profiles, a slimmer uber-jar.
+- [ ] **M5** Polish. BT.709 colour-space correction, gamma, working-resolution downscale, frame pooling, a slimmer uber-jar. (Per-OS build profiles landed early, with the release pipeline.)
 
 Design decisions, open questions, and per-milestone detail live in [`docs/`](docs/): [`PLAN.md`](docs/PLAN.md) is the source of truth, [`PROGRESS.md`](docs/PROGRESS.md) tracks state and carries the decisions log.
 
@@ -239,9 +299,11 @@ mvn -pl :chromatik-video package             # just one plugin
 mvn -Pinstall install -pl :chromatik-video   # build and install just one
 ```
 
-Chromatik has to be **restarted** to pick up a rebuilt package. There's no hot reload for content packages.
+Chromatik reloads a rebuilt package from the **CONTENT** tab: **Reload Package Content**, or leave **Auto-Reload Packages** on.
 
 Adding a plugin is four files and one line in the root pom: [`docs/ADDING-A-PLUGIN.md`](docs/ADDING-A-PLUGIN.md).
+
+Tagging `v<x.y.z>` publishes a release. [CI](.github/workflows/ci.yml) builds all four platform jars, loads each one on real hardware of its platform, then attaches them with checksums. The tag sets the version, so the pom stays on `-SNAPSHOT`.
 
 A few things worth knowing before you touch the code:
 

@@ -13,8 +13,8 @@
 - [ ] Lifecycle hardening: confirm no thread/native-handle leaks across activate/deactivate, file change, and source change.
 - [ ] Audio: confirm the decoder does not decode the audio track (save CPU).
 - [ ] Demo `.lxp` with preloaded geometry and a `VideoPattern` for one-click verification.
-- [ ] Per-OS/arch build profiles (if JavaCV): produce `chromatik-video-<os>-<arch>.jar`; ship macOS arm64 first.
-- [ ] Distribution README: install steps, which jar to grab, licence notes (FFmpeg preset GPL/LGPL check), and known limitations.
+- [x] Per-OS/arch build profiles: `dist-macos` (both architectures in one jar), `dist-windows`, `dist-linux-x86_64`, `dist-linux-arm64`. Landed early with the release pipeline.
+- [x] Distribution: tag-triggered GitHub Release, per-platform verification on real runners, install steps and LGPL notice in the README and the release template.
 
 ## Exit criteria
 
@@ -27,7 +27,7 @@
 
 - `Projector.java` (gamma/level/colourspace), `FileVideoSource.java`/`FramePipeline.java` (swscale, pooling, error handling)
 - `VideoPattern.java` (`workingResolution`)
-- The **root** `pom.xml` for the per-OS/arch build profiles, so one platform switch covers every plugin. Shade filters for the uber-jar trim belong in `packages/chromatik-video/pom.xml`, since they're specific to the decode stack.
+- `packages/chromatik-video/pom.xml` for the uber-jar trim: the shade filters are specific to the decode stack, so they belong in the module rather than the root pom.
 - `packages/chromatik-video/projects/demo.lxp`, `README.md`
 
 ## Verification

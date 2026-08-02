@@ -48,7 +48,15 @@ Declare them in the module's `<dependencies>`. Anything at `compile` scope gets 
 
 If the dependency is one the root pom already manages (the `org.bytedeco` decode stack), declare groupId and artifactId only and let the version and classifier come from `dependencyManagement`. See `packages/chromatik-video/pom.xml`.
 
-If it's new and more than one plugin will ever want it, add it to the root pom's `<dependencyManagement>` first, then declare it unversioned here. Don't add it to the root `<dependencies>` unless every plugin genuinely needs it: that block is inherited, and FFmpeg alone is 22 MB per jar.
+If it's new and more than one plugin will ever want it, add it to the root pom's `<dependencyManagement>` first, then declare it unversioned here. Don't add it to the root `<dependencies>` unless every plugin genuinely needs it: that block is inherited, and FFmpeg alone is 27 MB per jar.
+
+### If the plugin bundles platform-specific natives
+
+A plugin whose dependencies are pure Java needs nothing here. It builds one jar, named `chromatik-<name>-<version>.jar`, that runs everywhere.
+
+A plugin that bundles a native library needs one jar per platform, because the native inside only runs on the platform it was built for. Give it a `dist-*` profile per target, each declaring that platform's classifier and setting `<build><finalName>` so the jar says which platform it is. `packages/chromatik-video/pom.xml` is the worked example, including a Mac profile that carries both architectures in one jar so Mac users don't have to identify their own CPU.
+
+Then add the new profiles to the build loop in `.github/workflows/ci.yml`, and a `verify` matrix entry per platform so each jar gets loaded on real hardware before it ships.
 
 ## 3. Write `packages/chromatik-<name>/src/main/resources/lx.package`
 
