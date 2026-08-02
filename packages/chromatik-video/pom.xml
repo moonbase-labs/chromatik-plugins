@@ -1,0 +1,42 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      relativePath is required: Maven's default is ../pom.xml, which is wrong two levels
+      down. Pointing it at the real file also lets `mvn` run inside this directory without
+      the parent having been installed to ~/.m2 first.
+    -->
+    <parent>
+        <groupId>laserphile</groupId>
+        <artifactId>chromatik-plugins</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>chromatik-video</artifactId>
+    <name>Laserphile Video</name>
+
+    <!--
+      Everything else is inherited: the provided LX dependencies, compiler settings,
+      lx.package filtering, the shade config, and the install profile all live in the
+      root pom. Versions and native classifiers for these three come from its
+      dependencyManagement. They are compile scope, so shade packs them into the jar.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacv</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>ffmpeg</artifactId>
+            <classifier>${native.classifier}</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacpp</artifactId>
+            <classifier>${native.classifier}</classifier>
+        </dependency>
+    </dependencies>
+</project>

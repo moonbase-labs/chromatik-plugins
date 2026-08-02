@@ -3,10 +3,26 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>laserphile</groupId>
-    <artifactId>chromatik-video</artifactId>
+    <artifactId>chromatik-plugins</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <packaging>jar</packaging>
-    <name>Laserphile Video</name>
+    <packaging>pom</packaging>
+    <name>Laserphile Chromatik Plugins</name>
+
+    <!--
+      Aggregator + parent for every Chromatik content package in this repo.
+
+      Chromatik discovers packages by scanning ~/Chromatik/Packages/*.jar for a root
+      lx.package file, so one jar is exactly one package. Each plugin therefore needs
+      its own module, its own shade run, and its own lx.package. Everything that is
+      identical across plugins (compiler settings, the provided LX dependencies, the
+      lx.package resource filtering, the shade config, the install profile) lives here
+      and is inherited, so a new plugin module is a ~15-line pom.
+
+      See docs/ADDING-A-PLUGIN.md for the recipe.
+    -->
+    <modules>
+        <module>packages/chromatik-video</module>
+    </modules>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
@@ -14,7 +30,7 @@
 
         <lx.version>1.2.1</lx.version>
 
-        <!-- Decode stack (bundled). native.classifier will become per-OS build profiles later. -->
+        <!-- Decode stack, used by plugins that bundle it. native.classifier will become per-OS build profiles later. -->
         <javacv.version>1.5.11</javacv.version>
         <ffmpeg.version>7.1-1.5.11</ffmpeg.version>
         <native.classifier>macosx-arm64</native.classifier>
@@ -29,6 +45,9 @@
       scope=provided (compiled against, never bundled). All three resolve from Maven Central.
       glxstudio is only needed if we ever add custom device UI; kept here to match the
       official LXPackage template and because it is harmless at provided scope.
+
+      Inherited by every module: a Chromatik plugin that does not compile against LX is
+      not a Chromatik plugin.
     -->
     <dependencies>
         <dependency>
@@ -49,31 +68,45 @@
             <version>${lx.version}</version>
             <scope>provided</scope>
         </dependency>
-
-        <!--
-          JavaCV/FFmpeg: bundled (compile scope) so the shade plugin packs them into the jar.
-          Only the ffmpeg + javacpp native for this machine's platform is pulled (not the
-          all-OS *-platform aggregators). Default ffmpeg build is LGPL.
-        -->
-        <dependency>
-            <groupId>org.bytedeco</groupId>
-            <artifactId>javacv</artifactId>
-            <version>${javacv.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.bytedeco</groupId>
-            <artifactId>ffmpeg</artifactId>
-            <version>${ffmpeg.version}</version>
-            <classifier>${native.classifier}</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.bytedeco</groupId>
-            <artifactId>javacpp</artifactId>
-            <version>${javacv.version}</version>
-            <classifier>${native.classifier}</classifier>
-        </dependency>
     </dependencies>
 
+    <!--
+      JavaCV/FFmpeg is managed, not inherited. Versions and native classifiers are pinned
+      here so every module that decodes agrees on them, but only modules that actually
+      declare these dependencies pay the ~23 MB of bundled natives. A plugin that does no
+      decoding should not carry FFmpeg.
+
+      Only the ffmpeg + javacpp native for this machine's platform is pulled (not the
+      all-OS *-platform aggregators). Default ffmpeg build is LGPL.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>javacv</artifactId>
+                <version>${javacv.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>ffmpeg</artifactId>
+                <version>${ffmpeg.version}</version>
+                <classifier>${native.classifier}</classifier>
+            </dependency>
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>javacpp</artifactId>
+                <version>${javacv.version}</version>
+                <classifier>${native.classifier}</classifier>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!--
+      Declared as plugins rather than pluginManagement so modules inherit the executions
+      as well as the versions, and a new plugin module needs no <build> block at all.
+      All three are harmless on this pom-packaging parent: shade skips pom projects, and
+      both resources executions find nothing to copy at the repo root.
+    -->
     <build>
         <plugins>
             <plugin>
@@ -116,9 +149,10 @@
             </plugin>
 
             <!--
-              Uber-jar: bundle JavaCV/FFmpeg (compile scope) + the platform native; LX/GLX are
-              provided so they stay out. No relocation, so the org/bytedeco/**/<platform>/ native
-              resource paths stay verbatim (JavaCPP's Loader looks them up as classpath resources).
+              Uber-jar: bundle each module's compile-scope dependencies and any platform
+              native; LX/GLX are provided so they stay out. No relocation, so the
+              org/bytedeco/**/<platform>/ native resource paths stay verbatim (JavaCPP's
+              Loader looks them up as classpath resources).
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -150,7 +184,10 @@
         </plugins>
     </build>
 
-    <!-- `mvn -Pinstall install` copies the built jar into ~/Chromatik/Packages. Plain `mvn package` does not. -->
+    <!--
+      `mvn -Pinstall install` copies every module's built jar into ~/Chromatik/Packages.
+      Add `-pl :chromatik-<name>` to install a single plugin. Plain `mvn package` does not copy.
+    -->
     <profiles>
         <profile>
             <id>install</id>
