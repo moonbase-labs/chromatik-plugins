@@ -12,16 +12,23 @@ Two files: the **Core** package for your computer, plus whichever pattern you wa
 | **Core**, for Linux (ARM, e.g. Raspberry Pi) | `chromatik-core-{{VERSION}}-linux-arm64.jar` |
 | **Video**, plays a video file | `chromatik-video-{{VERSION}}.jar` |
 | **Screen Capture**, mirrors your desktop | `chromatik-screen-{{VERSION}}.jar` |
+| **Touch**, camera processing and OSC | `chromatik-touch-{{VERSION}}.jar` |
+| **Panel Transforms**, fixture calibration helper | `chromatik-transforms-{{VERSION}}.jar` |
+| **MCP**, AI control plugin | `chromatik-mcp-{{VERSION}}.jar` |
+| **Shader**, runs a `.glsl` file, Mac | `chromatik-shader-{{VERSION}}-macos.jar` |
+| **Shader**, Windows | `chromatik-shader-{{VERSION}}-windows.jar` |
+| **Shader**, Linux (Intel/AMD) | `chromatik-shader-{{VERSION}}-linux-x86_64.jar` |
+| **Shader**, Linux (ARM) | `chromatik-shader-{{VERSION}}-linux-arm64.jar` |
 
-The Mac Core file works on both Apple Silicon and Intel, so there is nothing to check first. The two pattern files are the same on every platform.
+The Mac Core file works on both Apple Silicon and Intel, so there is nothing to check first. Video and Screen Capture are the same on every platform; Shader ships one file per platform.
 
 ## Install
 
-1. Download the **Core** file for your computer from **Assets** below, plus **Video**, **Screen Capture**, or both.
+1. Download the **Core** file for your computer from **Assets** below, plus whichever packages you want: **Video**, **Screen Capture**, **Touch**, **Panel Transforms**, **MCP**, and/or **Shader**.
 2. **Drag each onto the Chromatik window.** Chromatik installs them for you.
 3. In Chromatik's **CONTENT** tab, click **Reload Package Content**.
 
-To confirm it worked, add a pattern to a channel and look for **Laserphile → Video** or **Laserphile → Screen Capture**.
+To confirm it worked, add a pattern to a channel and look for **Laserphile → Video**, **Laserphile → Screen Capture**, **Laserphile → Touch Camera**, **Laserphile → Touch Blob OSC**, **Laserphile → Panel Transforms**, or **Laserphile → Shader**. For MCP, enable it under **Preferences → Plugins** and restart.
 
 Install a pattern without Core and it will appear in the list and then refuse to load, saying so. Install Core and restart.
 
@@ -49,7 +56,7 @@ Delete `chromatik-video-0.1.0-*.jar` from your packages folder before installing
 
 ## Using it
 
-Add **Laserphile → Video**, then click **Browse** and pick a video file. Or add **Laserphile → Screen Capture** to put your desktop on the LEDs live. Either way the frame is projected onto your model's 3D points, so it works on domes, sculptures and strips, not just grids.
+Add **Laserphile → Video**, then click **Browse** and pick a video file. Or add **Laserphile → Screen Capture** to put your desktop on the LEDs live. Or add **Laserphile → Shader** and point it at a `.glsl` file. Either way the frame is projected onto your model's 3D points, so it works on domes, sculptures and strips, not just grids.
 
 Videos kept anywhere under your `Chromatik` folder are saved as relative paths, so a project you share with someone else still finds them.
 
@@ -57,9 +64,9 @@ Screen capture needs the operating system's permission, granted to Chromatik its
 
 ## Verified
 
-Every Core file here was loaded on real hardware of its platform before release: FFmpeg natives loaded and frames decoded on macOS arm64, macOS x86_64, Windows x86_64, Linux x86_64 and Linux arm64. Both pattern files were checked on every one of those platforms too.
+Every Core file here was loaded on real hardware of its platform before release: FFmpeg natives loaded and frames decoded on macOS arm64, macOS x86_64, Windows x86_64, Linux x86_64 and Linux arm64. Video and Screen Capture were checked on every one of those platforms too.
 
-That check covers decoding. Installing and playing end to end inside Chromatik is exercised on macOS, so if something looks wrong on another platform please [open an issue](https://github.com/moonbase-labs/chromatik-plugins/issues).
+Shader jar shape is checked on every platform, and rendering is currently confirmed in-app on macOS. If something looks wrong on another platform please [open an issue](https://github.com/moonbase-labs/chromatik-plugins/issues).
 
 ## Checksums
 

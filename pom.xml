@@ -29,7 +29,9 @@
         <module>packages/chromatik-core</module>
         <module>packages/chromatik-video</module>
         <module>packages/chromatik-screen</module>
+        <module>packages/chromatik-touch</module>
         <module>packages/chromatik-shader</module>
+        <module>packages/chromatik-transforms</module>
         <module>packages/chromatik-mcp</module>
     </modules>
 

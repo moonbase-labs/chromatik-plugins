@@ -1,6 +1,6 @@
 package laserphile.chromatik.core;
 
-import org.bytedeco.javacv.FFmpegFrameGrabber;
+import org.bytedeco.javacv.FrameGrabber;
 
 /**
  * How big frames should be decoded, and how to make a grabber produce that size.
@@ -63,7 +63,7 @@ public final class WorkingResolution {
    * <p>Never enlarges. Asking for 512 from a 320-wide clip gets 320, since inventing pixels only
    * costs memory and gives the projection nothing it did not already have.
    */
-  public static void applyTo(FFmpegFrameGrabber grabber, int longestEdge) {
+  public static void applyTo(FrameGrabber grabber, int longestEdge) {
     final int nativeWidth = grabber.getImageWidth();
     final int nativeHeight = grabber.getImageHeight();
     final int nativeLongestEdge = Math.max(nativeWidth, nativeHeight);

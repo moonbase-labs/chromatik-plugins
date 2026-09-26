@@ -119,6 +119,8 @@ public final class FramePipeline {
       // Normal shutdown path (stop() interrupts the thread).
     } catch (Exception failure) {
       LX.log(String.format("[LaserphileVideo] decode error for %s: %s", source, failure));
+    } catch (Throwable failure) {
+      LX.log(String.format("[LaserphileVideo] fatal source error for %s: %s", source, failure));
     } finally {
       source.close();
 

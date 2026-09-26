@@ -10,7 +10,7 @@ Play video, and run GLSL shaders, on LEDs that aren't a screen.
 [![Java 21](https://img.shields.io/badge/Java-21-f89820.svg?style=flat-square&logo=openjdk&logoColor=white)](https://adoptium.net/)
 [![Chromatik 1.2.1](https://img.shields.io/badge/Chromatik-1.2.1-00c8ff.svg?style=flat-square)](https://chromatik.co/)
 [![Platform: macOS · Windows · Linux](https://img.shields.io/badge/Platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-64748b.svg?style=flat-square)](#-install)
-[![Patterns: Video · Screen · Shader](https://img.shields.io/badge/Patterns-Video%20%C2%B7%20Screen%20%C2%B7%20Shader-8b5cf6.svg?style=flat-square)](#-roadmap)
+[![Patterns: Video · Screen · Shader · Touch](https://img.shields.io/badge/Patterns-Video%20%C2%B7%20Screen%20%C2%B7%20Shader%20%C2%B7%20Touch-8b5cf6.svg?style=flat-square)](#-roadmap)
 
 [**Download the latest release**](https://github.com/moonbase-labs/chromatik-plugins/releases/latest)
 
@@ -33,6 +33,9 @@ The **Shader** pattern takes a `.glsl` file, in whichever dialect it happens to 
 
 No build tools required. You need [Chromatik](https://chromatik.co/) and nothing else.
 
+> [!NOTE]
+> This README describes `main`, so it can mention modules or platforms that have not been tagged and published yet. For the exact files in a specific release, use that tag's GitHub release assets and notes.
+
 Two files: **Core**, which carries the video engine both patterns share, plus whichever pattern you want.
 
 1. **Download** from the [latest release](https://github.com/moonbase-labs/chromatik-plugins/releases/latest): the Core file for your computer, and one or both patterns.
@@ -45,6 +48,9 @@ Two files: **Core**, which carries the video engine both patterns share, plus wh
    | **Core**, Linux (ARM, e.g. Raspberry Pi) | `chromatik-core-<version>-linux-arm64.jar` |
    | **Video**, plays a file | `chromatik-video-<version>.jar` |
    | **Screen Capture**, mirrors the desktop | `chromatik-screen-<version>.jar` |
+    | **Touch**, camera processing and OSC | `chromatik-touch-<version>.jar` |
+    | **Panel Transforms**, fixture calibration helper | `chromatik-transforms-<version>.jar` |
+    | **MCP**, AI control plugin | `chromatik-mcp-<version>.jar` |
    | **Shader**, runs a `.glsl` file, Mac | `chromatik-shader-<version>-macos.jar` |
    | **Shader**, Windows | `chromatik-shader-<version>-windows.jar` |
    | **Shader**, Linux (Intel/AMD) | `chromatik-shader-<version>-linux-x86_64.jar` |
@@ -59,7 +65,7 @@ The Mac Core download carries both Apple Silicon and Intel builds, so there's no
 Chromatik has no way to express that one package needs another, so a pattern installed without Core will list itself and then refuse to load, saying which package is missing. Install Core and restart.
 
 > [!IMPORTANT]
-> **Upgrading from v0.1.0?** Delete `chromatik-video-0.1.0-*.jar` from your packages folder first. That release was a single jar carrying everything, so it isn't replaced by any of the files above: it sits alongside them, and Chromatik loads both, giving two packages of the same name and a duplicate of every class. Saved projects are unaffected, since the pattern's name and controls are unchanged.
+> **Installing a release newer than v0.1.0?** Delete `chromatik-video-0.1.0-*.jar` from your packages folder first. That release was a single jar carrying everything, so it isn't replaced by any of the files above: it sits alongside them, and Chromatik loads both, giving two packages of the same name and a duplicate of every class. Saved projects are unaffected, since the pattern's name and controls are unchanged.
 
 ### Try it without building a model
 
@@ -103,6 +109,8 @@ Every release is loaded on real hardware of each platform before it ships, so th
 | [`packages/chromatik-video`](packages/chromatik-video) | `laserphile.chromatik.video` | **Laserphile → Video** | Plays a video file onto the model |
 | [`packages/chromatik-screen`](packages/chromatik-screen) | `laserphile.chromatik.screen` | **Laserphile → Screen Capture** | Puts the live desktop onto the model |
 | [`packages/chromatik-shader`](packages/chromatik-shader) | `laserphile.chromatik.shader` | **Laserphile → Shader** | Renders a GLSL fragment shader onto the model |
+| [`packages/chromatik-touch`](packages/chromatik-touch) | `laserphile.chromatik.touch` | **Laserphile → Touch Camera**, **Touch Blob OSC** | Webcam-driven touch processing, calibration preview, and OSC blob output |
+| [`packages/chromatik-transforms`](packages/chromatik-transforms) | `laserphile.chromatik.transforms` | **Laserphile → Panel Transforms** | Calibration helper that applies yaw/pitch/roll edits directly to matching panel fixtures |
 | [`packages/chromatik-mcp`](packages/chromatik-mcp) | `laserphile.chromatik.mcp` | no patterns, a plugin | Lets an AI agent read and compose the show over MCP |
 
 A Maven multi-module build, one module per Chromatik content package. Chromatik discovers packages by scanning `~/Chromatik/Packages/*.jar` for a root `lx.package` file, so one jar is exactly one package and every plugin needs its own module. The root `pom.xml` is the parent: it holds the compiler settings, the `provided` LX dependencies, the `lx.package` filtering, the shade config, and the install profile, so a new module is a ~15-line pom.
@@ -521,9 +529,13 @@ Adding a plugin is four files and one line in the root pom: [`docs/ADDING-A-PLUG
 
 Tagging publishes. [CI](.github/workflows/ci.yml) builds all four platform jars, loads each one on real hardware of its platform, then attaches them with checksums.
 
+For an operator checklist, see [`docs/RELEASING.md`](docs/RELEASING.md).
+
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.2.0 && git push origin v0.2.0
 ```
+
+Replace `v0.2.0` with whichever semver tag you are cutting.
 
 Versions are [semver](https://semver.org/): `vMAJOR.MINOR.PATCH`, optionally with a `-prerelease` suffix. A tag that isn't fails the build before anything is published, and a `-prerelease` tag (`v0.2.0-rc.1`) is marked as such on GitHub so it stays out of "latest release". Build metadata (`+`) is rejected: semver ignores it for precedence and it mangles download URLs.
 
