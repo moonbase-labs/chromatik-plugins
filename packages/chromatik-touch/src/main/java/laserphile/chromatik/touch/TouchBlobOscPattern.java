@@ -60,6 +60,12 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
   public final DiscreteParameter cameraIndex =
     new DiscreteParameter("Camera", 0, 0, 8)
       .setDescription("Camera index used on macOS/Linux unless Input override is set");
+  public final BooleanParameter invertX =
+    new BooleanParameter("InvertX", false)
+      .setDescription("Flip camera input horizontally before processing and OSC extraction");
+  public final BooleanParameter invertY =
+    new BooleanParameter("InvertY", false)
+      .setDescription("Flip camera input vertically before processing and OSC extraction");
   public final DiscreteParameter backend =
     new DiscreteParameter("Backend", CaptureBackend.OPTIONS, CaptureBackend.defaultOption())
       .setDescription("Capture backend: VideoInput is safer on Windows, FFmpeg uses dshow");
@@ -165,6 +171,8 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
     addParameter("oscPrefix", this.oscPrefix);
 
     addParameter("cameraIndex", this.cameraIndex);
+    addParameter("invertX", this.invertX);
+    addParameter("invertY", this.invertY);
     addParameter("backend", this.backend);
     addParameter("cameraName", this.cameraName);
     addParameter("inputOverride", this.inputOverride);
@@ -202,6 +210,8 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
       this.projection.interpolation);
 
     this.cameraIndex.addListener(parameter -> this.openRequested = true);
+    this.invertX.addListener(parameter -> this.openRequested = true);
+    this.invertY.addListener(parameter -> this.openRequested = true);
     this.backend.addListener(parameter -> this.openRequested = true);
     this.cameraName.addListener(parameter -> this.openRequested = true);
     this.inputOverride.addListener(parameter -> this.openRequested = true);
@@ -251,28 +261,48 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
       return;
     }
 
-    final String[] discovered = WindowsDshowCameraList.listVideoDevices();
-    final String[] options = (discovered.length == 0) ? new String[] { NO_CAMERAS_LABEL } : discovered;
-
-    int selected = 0;
-    final String currentName = this.cameraName.getString();
-    for (int i = 0; i < options.length; i++) {
-      if (options[i].equals(currentName)) {
-        selected = i;
-        break;
-      }
-    }
-
     this.syncingCameraList = true;
-    this.cameraDevice.setOptions(options, false);
-    this.cameraDevice.setIndex(Math.max(0, Math.min(selected, options.length - 1)));
+    try {
+      final String[] priorOptions = this.cameraDevice.getOptions();
+      final String[] discovered = WindowsDshowCameraList.listVideoDevices();
+      final String currentName = this.cameraName.getString();
 
-    if ((currentName == null || currentName.isBlank()) && options.length > 0
-      && !options[0].startsWith("(")) {
-      this.cameraName.setValue(options[0], false);
-      this.cameraIndex.setValue(0, false);
+      final String[] options;
+      if (discovered.length > 0) {
+        options = discovered;
+      } else if (currentName != null && !currentName.isBlank()) {
+        // Keep active capture target visible if enumeration is temporarily unavailable.
+        options = new String[] { currentName };
+      } else if (priorOptions != null && priorOptions.length > 0 && !priorOptions[0].startsWith("(")) {
+        // Preserve previous real device list on transient discovery failures.
+        options = priorOptions;
+      } else {
+        options = new String[] { NO_CAMERAS_LABEL };
+      }
+
+      int selected = 0;
+      for (int i = 0; i < options.length; i++) {
+        if (options[i].equals(currentName)) {
+          selected = i;
+          break;
+        }
+      }
+
+      this.cameraDevice.setOptions(options, true);
+      this.cameraDevice.setIndex(Math.max(0, Math.min(selected, options.length - 1)));
+
+      if ((currentName == null || currentName.isBlank()) && options.length > 0
+        && !options[0].startsWith("(")) {
+        this.cameraName.setValue(options[0], false);
+        this.cameraIndex.setValue(0, false);
+      }
+    } catch (Throwable t) {
+      LX.error(t, "[LaserphileTouch] failed to refresh Windows camera list");
+      this.cameraDevice.setOptions(new String[] { NO_CAMERAS_LABEL }, true);
+      this.cameraDevice.setIndex(0);
+    } finally {
+      this.syncingCameraList = false;
     }
-    this.syncingCameraList = false;
   }
 
   private void onCameraDeviceSelected() {
@@ -333,6 +363,8 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
       CaptureBackend.fromIndex(this.backend.getValuei()),
       this.cameraName.getString(),
       this.inputOverride.getString(),
+      this.invertX.isOn(),
+      this.invertY.isOn(),
       engineFrameRate,
       this.visionConfig);
 
@@ -420,31 +452,35 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
         newDropMenu(pattern.cameraDevice, PANEL_COLUMN_WIDTH),
         newButton(pattern.refreshCameras, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.previewMode, PANEL_COLUMN_WIDTH),
-        newTextBox(pattern.inputOverride, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.backend, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.workingResolution, PANEL_COLUMN_WIDTH));
     } else {
       addColumn(device, PANEL_COLUMN_WIDTH, "Source",
         newIntegerBox(pattern.cameraIndex, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.previewMode, PANEL_COLUMN_WIDTH),
-        newTextBox(pattern.inputOverride, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.backend, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.workingResolution, PANEL_COLUMN_WIDTH));
     }
 
+    addColumn(device, PANEL_COLUMN_WIDTH, "Orient",
+      newButton(pattern.invertX, PANEL_COLUMN_WIDTH),
+      newButton(pattern.invertY, PANEL_COLUMN_WIDTH));
+
     addColumn(device, PANEL_COLUMN_WIDTH, "Vision",
       newButton(pattern.freeze, PANEL_COLUMN_WIDTH),
       newButton(pattern.calibrate, PANEL_COLUMN_WIDTH),
+      newButton(pattern.invertDifference, PANEL_COLUMN_WIDTH),
+      newButton(pattern.overlayBlobs, PANEL_COLUMN_WIDTH),
+      newButton(pattern.circularMask, PANEL_COLUMN_WIDTH));
+
+    addColumn(device, PANEL_COLUMN_WIDTH, "Mask",
       newKnob(pattern.gain),
       newKnob(pattern.threshold),
-      newButton(pattern.invertDifference, PANEL_COLUMN_WIDTH),
-      newButton(pattern.overlayBlobs, PANEL_COLUMN_WIDTH));
+      newKnob(pattern.maskRadius));
 
     addColumn(device, PANEL_COLUMN_WIDTH, "Blobs",
       newKnob(pattern.minBlobArea),
-      newKnob(pattern.segmentCount),
-      newButton(pattern.circularMask, PANEL_COLUMN_WIDTH),
-      newKnob(pattern.maskRadius));
+      newKnob(pattern.segmentCount));
 
     addColumn(device, PANEL_COLUMN_WIDTH, "OSC",
       newButton(pattern.oscEnabled, PANEL_COLUMN_WIDTH),
@@ -470,7 +506,9 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
     addColumn(device, PANEL_COLUMN_WIDTH, "Frame",
       newKnob(pattern.projection.scale),
       newKnob(pattern.projection.stretchX),
-      newKnob(pattern.projection.stretchY),
+      newKnob(pattern.projection.stretchY));
+
+    addColumn(device, PANEL_COLUMN_WIDTH, "Pan",
       newKnob(pattern.projection.scrollX),
       newKnob(pattern.projection.scrollY));
 

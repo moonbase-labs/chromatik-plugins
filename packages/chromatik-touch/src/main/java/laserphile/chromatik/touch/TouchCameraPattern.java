@@ -57,6 +57,15 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
   public final TriggerParameter calibrate =
     new TriggerParameter("Calibrate")
       .setDescription("Capture the current frame as baseline for subtraction");
+  public final CompoundParameter gain =
+    new CompoundParameter("Gain", 0.85, 0.1, 2)
+      .setDescription("Scale on current frame before subtraction from baseline");
+  public final DiscreteParameter threshold =
+    new DiscreteParameter("Thresh", 72, 0, 256)
+      .setDescription("Binary threshold after subtraction");
+  public final BooleanParameter invertDifference =
+    new BooleanParameter("Invert", true)
+      .setDescription("Use baseline minus current instead of current minus baseline");
   public final BooleanParameter circularMask =
     new BooleanParameter("CircleMask", true)
       .setDescription("Apply a circular processing mask centered on the frame");
@@ -74,6 +83,12 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
   public final DiscreteParameter cameraIndex =
     new DiscreteParameter("Camera", 0, 0, 8)
       .setDescription("Camera index used on macOS/Linux unless Input override is set");
+  public final BooleanParameter invertX =
+    new BooleanParameter("InvertX", false)
+      .setDescription("Flip camera input horizontally before processing and projection");
+  public final BooleanParameter invertY =
+    new BooleanParameter("InvertY", false)
+      .setDescription("Flip camera input vertically before processing and projection");
   public final DiscreteParameter backend =
     new DiscreteParameter("Backend", CaptureBackend.OPTIONS, CaptureBackend.defaultOption())
       .setDescription("Capture backend: VideoInput is safer on Windows, FFmpeg uses dshow");
@@ -117,6 +132,9 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
 
     addParameter("freeze", this.freeze);
     addParameter("calibrate", this.calibrate);
+    addParameter("gain", this.gain);
+    addParameter("threshold", this.threshold);
+    addParameter("invertDifference", this.invertDifference);
     addParameter("circularMask", this.circularMask);
     addParameter("maskRadius", this.maskRadius);
     addParameter("outputMode", this.outputMode);
@@ -124,6 +142,8 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
 
     addParameter("cameraDevice", this.cameraDevice);
     addParameter("cameraIndex", this.cameraIndex);
+    addParameter("invertX", this.invertX);
+    addParameter("invertY", this.invertY);
     addParameter("backend", this.backend);
     addParameter("cameraName", this.cameraName);
     addParameter("inputOverride", this.inputOverride);
@@ -142,10 +162,15 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
       this.projection.stretchX,
       this.freeze,
       this.calibrate,
+      this.gain,
+      this.threshold,
+      this.invertDifference,
       this.circularMask,
       this.maskRadius,
       this.outputMode,
       this.cameraDevice,
+      this.invertX,
+      this.invertY,
       this.backend,
       this.projection.stretchY,
       this.projection.pitch,
@@ -158,12 +183,17 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
 
     this.cameraDevice.addListener(parameter -> onCameraDeviceSelected());
     this.cameraIndex.addListener(parameter -> this.openRequested = true);
+    this.invertX.addListener(parameter -> this.openRequested = true);
+    this.invertY.addListener(parameter -> this.openRequested = true);
     this.backend.addListener(parameter -> this.openRequested = true);
     this.cameraName.addListener(parameter -> this.openRequested = true);
     this.inputOverride.addListener(parameter -> this.openRequested = true);
     this.workingResolution.addListener(parameter -> this.openRequested = true);
     this.previewMode.addListener(parameter -> this.previewCanvas.setMode(this.previewMode.getValuei()));
     this.calibrate.onTrigger(this.visionConfig::requestCalibration);
+    this.gain.addListener(parameter -> syncVisionConfig());
+    this.threshold.addListener(parameter -> syncVisionConfig());
+    this.invertDifference.addListener(parameter -> syncVisionConfig());
     this.circularMask.addListener(parameter -> syncVisionConfig());
     this.maskRadius.addListener(parameter -> syncVisionConfig());
     this.outputMode.addListener(parameter -> this.openRequested = false);
@@ -195,27 +225,47 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
       return;
     }
 
-    final String[] discovered = WindowsDshowCameraList.listVideoDevices();
-    final String[] options = (discovered.length == 0) ? new String[] { NO_CAMERAS_LABEL } : discovered;
-
-    int selected = 0;
-    final String currentName = this.cameraName.getString();
-    for (int i = 0; i < options.length; i++) {
-      if (options[i].equals(currentName)) {
-        selected = i;
-        break;
-      }
-    }
-
     this.syncingCameraList = true;
-    this.cameraDevice.setOptions(options, false);
-    this.cameraDevice.setIndex(Math.max(0, Math.min(selected, options.length - 1)));
+    try {
+      final String[] priorOptions = this.cameraDevice.getOptions();
+      final String[] discovered = WindowsDshowCameraList.listVideoDevices();
+      final String currentName = this.cameraName.getString();
 
-    if ((currentName == null || currentName.isBlank()) && options.length > 0
-      && !options[0].startsWith("(")) {
-      this.cameraName.setValue(options[0], false);
+      final String[] options;
+      if (discovered.length > 0) {
+        options = discovered;
+      } else if (currentName != null && !currentName.isBlank()) {
+        // Keep active capture target visible if enumeration is temporarily unavailable.
+        options = new String[] { currentName };
+      } else if (priorOptions != null && priorOptions.length > 0 && !priorOptions[0].startsWith("(")) {
+        // Preserve previous real device list on transient discovery failures.
+        options = priorOptions;
+      } else {
+        options = new String[] { NO_CAMERAS_LABEL };
+      }
+
+      int selected = 0;
+      for (int i = 0; i < options.length; i++) {
+        if (options[i].equals(currentName)) {
+          selected = i;
+          break;
+        }
+      }
+
+      this.cameraDevice.setOptions(options, true);
+      this.cameraDevice.setIndex(Math.max(0, Math.min(selected, options.length - 1)));
+
+      if ((currentName == null || currentName.isBlank()) && options.length > 0
+        && !options[0].startsWith("(")) {
+        this.cameraName.setValue(options[0], false);
+      }
+    } catch (Throwable t) {
+      LX.error(t, "[LaserphileTouch] failed to refresh Windows camera list");
+      this.cameraDevice.setOptions(new String[] { NO_CAMERAS_LABEL }, true);
+      this.cameraDevice.setIndex(0);
+    } finally {
+      this.syncingCameraList = false;
     }
-    this.syncingCameraList = false;
   }
 
   private void onCameraDeviceSelected() {
@@ -260,16 +310,20 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
         CaptureBackend.fromIndex(this.backend.getValuei()),
         this.cameraName.getString(),
         this.inputOverride.getString(),
+        this.invertX.isOn(),
+        this.invertY.isOn(),
         engineFrameRate),
       WorkingResolution.edgeFor(this.workingResolution.getValuei(), this.model.size));
   }
 
   private void syncVisionConfig() {
+    this.visionConfig.currentGain = this.gain.getValue();
+    this.visionConfig.threshold = this.threshold.getValuei();
     this.visionConfig.circularMaskEnabled = this.circularMask.isOn();
     this.visionConfig.maskRadiusNormalized = this.maskRadius.getValue();
 
     // Touch Camera only needs mask+calibrate controls; keep remaining vision defaults stable.
-    this.visionConfig.invertDifference = true;
+    this.visionConfig.invertDifference = this.invertDifference.isOn();
     this.visionConfig.overlayBlobs = false;
     this.visionConfig.oscEnabled = false;
   }
@@ -341,9 +395,7 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
 
   private static final float PANEL_COLUMN_WIDTH = 76;
 
-  /**
-   * Custom panel so camera naming and input override are reachable and grouped in a stable layout.
-   */
+  /** Custom panel with consistent camera/vision ordering and constrained per-column density. */
   @Override
   public void buildDeviceControls(LXStudio.UI ui, UIDevice device, TouchCameraPattern pattern) {
     device.setLayout(UI2dContainer.Layout.HORIZONTAL, 4);
@@ -354,24 +406,31 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
         newDropMenu(pattern.cameraDevice, PANEL_COLUMN_WIDTH),
         newButton(pattern.refreshCameras, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.previewMode, PANEL_COLUMN_WIDTH),
-        newTextBox(pattern.inputOverride, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.backend, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.workingResolution, PANEL_COLUMN_WIDTH));
     } else {
       addColumn(device, PANEL_COLUMN_WIDTH, "Source",
         newIntegerBox(pattern.cameraIndex, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.previewMode, PANEL_COLUMN_WIDTH),
-        newTextBox(pattern.inputOverride, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.backend, PANEL_COLUMN_WIDTH),
         newDropMenu(pattern.workingResolution, PANEL_COLUMN_WIDTH));
     }
 
+    addColumn(device, PANEL_COLUMN_WIDTH, "Orient",
+      newButton(pattern.invertX, PANEL_COLUMN_WIDTH),
+      newButton(pattern.invertY, PANEL_COLUMN_WIDTH));
+
     addColumn(device, PANEL_COLUMN_WIDTH, "Vision",
+      newDropMenu(pattern.outputMode, PANEL_COLUMN_WIDTH),
       newButton(pattern.freeze, PANEL_COLUMN_WIDTH),
       newButton(pattern.calibrate, PANEL_COLUMN_WIDTH),
-      newButton(pattern.circularMask, PANEL_COLUMN_WIDTH),
-      newKnob(pattern.maskRadius),
-      newDropMenu(pattern.outputMode, PANEL_COLUMN_WIDTH));
+      newButton(pattern.invertDifference, PANEL_COLUMN_WIDTH),
+      newButton(pattern.circularMask, PANEL_COLUMN_WIDTH));
+
+    addColumn(device, PANEL_COLUMN_WIDTH, "Mask",
+      newKnob(pattern.gain),
+      newKnob(pattern.threshold),
+      newKnob(pattern.maskRadius));
 
     addColumn(device, PANEL_COLUMN_WIDTH, "Move",
       newKnob(pattern.projection.translateX),
@@ -391,7 +450,9 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
     addColumn(device, PANEL_COLUMN_WIDTH, "Frame",
       newKnob(pattern.projection.scale),
       newKnob(pattern.projection.stretchX),
-      newKnob(pattern.projection.stretchY),
+      newKnob(pattern.projection.stretchY));
+
+    addColumn(device, PANEL_COLUMN_WIDTH, "Pan",
       newKnob(pattern.projection.scrollX),
       newKnob(pattern.projection.scrollY));
 

@@ -125,6 +125,8 @@ The repo is named for what it's growing into. Sibling `laserphile.chromatik.*` p
 - **Never blocks the engine.** All decode and colour conversion happen off the LX engine thread. `run()` does a lock-free read and a tight per-point loop.
 - **Full transport.** Play/pause, loop, 0.1x to 4x speed, and a two-way position slider you can scrub. Looping is gapless and scrubbing coalesces, so a fast drag doesn't queue up a hundred seeks.
 - **Live screen capture.** A second pattern, **Screen Capture**, puts the desktop onto the LEDs in real time through the same projection controls. It keeps only the newest frame, so nothing buffers latency in between, and it carries no transport, because a live desktop has no playhead to move. Needs screen-recording permission for Chromatik.
+- **Touch camera and OSC blob extraction.** `Touch Camera` and `Touch Blob OSC` share the same webcam pipeline, including gain/threshold baseline subtraction, circular masking, and orientation flips for mirrored camera rigs.
+- **Built-in touch preview server.** The touch package logs a local preview URL and now prefers port `42070`, with automatic fallback to the next free local port if that port is in use.
 - **Full projection control.** Yaw, pitch, roll, translate on three axes, scale, per-axis stretch, and scroll.
 - **Four wrap modes.** `CLAMP`, `CLIP`, `TILE`, `MIRROR`, matching the vocabulary of the built-in `ImagePattern`.
 - **Transparent background.** `CLEAR` lets lower LX layers show through where the image doesn't reach.
@@ -532,12 +534,12 @@ Tagging publishes. [CI](.github/workflows/ci.yml) builds all four platform jars,
 For an operator checklist, see [`docs/RELEASING.md`](docs/RELEASING.md).
 
 ```bash
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.2.1 && git push origin v0.2.1
 ```
 
-Replace `v0.2.0` with whichever semver tag you are cutting.
+Replace `v0.2.1` with whichever semver tag you are cutting.
 
-Versions are [semver](https://semver.org/): `vMAJOR.MINOR.PATCH`, optionally with a `-prerelease` suffix. A tag that isn't fails the build before anything is published, and a `-prerelease` tag (`v0.2.0-rc.1`) is marked as such on GitHub so it stays out of "latest release". Build metadata (`+`) is rejected: semver ignores it for precedence and it mangles download URLs.
+Versions are [semver](https://semver.org/): `vMAJOR.MINOR.PATCH`, optionally with a `-prerelease` suffix. A tag that isn't fails the build before anything is published, and a `-prerelease` tag (`v0.2.1-rc.1`) is marked as such on GitHub so it stays out of "latest release". Build metadata (`+`) is rejected: semver ignores it for precedence and it mangles download URLs.
 
 The tag is the only place a release version lives. The pom stays on `-SNAPSHOT` naming the release it's heading for, and CI overwrites it at build time so the jar reports a real version through `lx.package`.
 

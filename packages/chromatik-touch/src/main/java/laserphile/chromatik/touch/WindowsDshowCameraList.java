@@ -31,6 +31,18 @@ final class WindowsDshowCameraList {
       return new String[0];
     }
 
+    // Use the best tooling that this machine supports. Shell-based device discovery is
+    // generally safer during hot-plug on Windows, and FFmpeg probing is the fallback.
+    final String[] shellNames = listViaPowerShell();
+    if (shellNames.length > 0) {
+      return shellNames;
+    }
+
+    return listViaFfmpeg();
+  }
+
+  private static String[] listViaFfmpeg() {
+
     final StringBuilder logs = new StringBuilder(4096);
 
     FFmpegFrameGrabber grabber = null;
@@ -88,12 +100,7 @@ final class WindowsDshowCameraList {
     }
 
     final String output = logs.toString();
-    final String[] ffmpegNames = parseVideoDeviceNames(output);
-    if (ffmpegNames.length > 0) {
-      return ffmpegNames;
-    }
-
-    return listViaPowerShell();
+    return parseVideoDeviceNames(output);
   }
 
   private static String[] parseVideoDeviceNames(String output) {
@@ -130,8 +137,18 @@ final class WindowsDshowCameraList {
   }
 
   private static String[] listViaPowerShell() {
+    for (String shell : List.of("pwsh", "powershell")) {
+      final String[] names = listViaPowerShell(shell);
+      if (names.length > 0) {
+        return names;
+      }
+    }
+    return new String[0];
+  }
+
+  private static String[] listViaPowerShell(String shell) {
     final List<String> command = List.of(
-      "powershell",
+      shell,
       "-NoProfile",
       "-Command",
       "$cams = Get-CimInstance Win32_PnPEntity | Where-Object { "
@@ -157,8 +174,15 @@ final class WindowsDshowCameraList {
         }
       }
 
-      process.waitFor(2, TimeUnit.SECONDS);
-      process.destroyForcibly();
+      final boolean exited = process.waitFor(2, TimeUnit.SECONDS);
+      if (!exited) {
+        process.destroyForcibly();
+        return new String[0];
+      }
+
+      if (process.exitValue() != 0) {
+        return new String[0];
+      }
     } catch (Throwable ignored) {
       return new String[0];
     }

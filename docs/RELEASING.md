@@ -4,9 +4,9 @@ This repo publishes from tags only. A release appears on GitHub when a semver ta
 
 ## Next release plan
 
-Recommended next tag: `v0.2.0`.
+Recommended next tag: `v0.2.1`.
 
-Why: the repo now documents and ships multiple packages beyond the original `v0.1.0` fat jar, including module splits and new patterns. That is a MINOR bump under the semver policy in the README.
+Why: current unreleased changes are patch-level behavior and UX updates in `chromatik-touch` (camera orientation controls, more resilient Windows camera enumeration, and a stable preview port preference with fallback) without a package-surface break. That is a PATCH bump under the semver policy in the README.
 
 ## Preflight checklist
 
@@ -36,8 +36,8 @@ java -cp packages/chromatik-core/target/chromatik-core-*-macos.jar \
 ## Publish
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 CI will:

@@ -26,6 +26,7 @@ final class TouchPreviewCanvas {
   static final int RAW = 1;
   static final int PROCESSED = 2;
   static final int BOTH = 3;
+  private static final int DEFAULT_PREVIEW_PORT = 42070;
 
   private final String title;
 
@@ -78,20 +79,38 @@ final class TouchPreviewCanvas {
     }
 
     try {
-      this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-      this.port = this.server.getAddress().getPort();
+      this.server = createServer(DEFAULT_PREVIEW_PORT);
+    } catch (IOException preferredPortFailure) {
+      try {
+        this.server = createServer(0);
+      } catch (IOException fallbackFailure) {
+        LX.log(String.format(
+          "[LaserphileTouch] preview server init failed: preferred=%s fallback=%s",
+          preferredPortFailure,
+          fallbackFailure));
+        this.server = null;
+        this.port = -1;
+        return;
+      }
 
-      this.server.createContext("/", this::servePage);
-      this.server.createContext("/mode", this::serveMode);
-      this.server.createContext("/raw.png", exchange -> serveImage(exchange, this.latestRaw));
-      this.server.createContext("/processed.png", exchange -> serveImage(exchange, this.latestProcessed));
-
-      this.server.start();
-    } catch (IOException failure) {
-      LX.log(String.format("[LaserphileTouch] preview server init failed: %s", failure));
-      this.server = null;
-      this.port = -1;
+      LX.log(String.format(
+        "[LaserphileTouch] preview port %d unavailable, using %d",
+        DEFAULT_PREVIEW_PORT,
+        this.port));
     }
+  }
+
+  private HttpServer createServer(int requestedPort) throws IOException {
+    final HttpServer boundServer = HttpServer.create(new InetSocketAddress("127.0.0.1", requestedPort), 0);
+    this.port = boundServer.getAddress().getPort();
+
+    boundServer.createContext("/", this::servePage);
+    boundServer.createContext("/mode", this::serveMode);
+    boundServer.createContext("/raw.png", exchange -> serveImage(exchange, this.latestRaw));
+    boundServer.createContext("/processed.png", exchange -> serveImage(exchange, this.latestProcessed));
+
+    boundServer.start();
+    return boundServer;
   }
 
   private void announcePreviewUrl() {

@@ -56,7 +56,9 @@ Delete `chromatik-video-0.1.0-*.jar` from your packages folder before installing
 
 ## Using it
 
-Add **Laserphile → Video**, then click **Browse** and pick a video file. Or add **Laserphile → Screen Capture** to put your desktop on the LEDs live. Or add **Laserphile → Shader** and point it at a `.glsl` file. Either way the frame is projected onto your model's 3D points, so it works on domes, sculptures and strips, not just grids.
+Add **Laserphile → Video**, then click **Browse** and pick a video file. Or add **Laserphile → Screen Capture** to put your desktop on the LEDs live. Or add **Laserphile → Touch Camera** / **Touch Blob OSC** for webcam-driven masking and OSC blobs. Or add **Laserphile → Shader** and point it at a `.glsl` file. Either way the frame is projected onto your model's 3D points, so it works on domes, sculptures and strips, not just grids.
+
+The touch patterns include a local browser preview. They now prefer `http://127.0.0.1:42070/` and automatically fall back to another local port if `42070` is already in use.
 
 Videos kept anywhere under your `Chromatik` folder are saved as relative paths, so a project you share with someone else still finds them.
 

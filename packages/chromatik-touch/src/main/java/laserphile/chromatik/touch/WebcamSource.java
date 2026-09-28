@@ -31,6 +31,8 @@ final class WebcamSource implements FrameSource {
   private final CaptureBackend backend;
   private final String cameraName;
   private final String inputOverride;
+  private final boolean invertX;
+  private final boolean invertY;
   private final double targetFrameRate;
 
   private final TouchVisionConfig visionConfig;
@@ -48,6 +50,8 @@ final class WebcamSource implements FrameSource {
     CaptureBackend backend,
     String cameraName,
     String inputOverride,
+    boolean invertX,
+    boolean invertY,
     double engineFrameRate,
     TouchVisionConfig visionConfig) {
 
@@ -55,6 +59,8 @@ final class WebcamSource implements FrameSource {
     this.backend = backend == null ? CaptureBackend.AUTO : backend;
     this.cameraName = cameraName == null ? "" : cameraName.trim();
     this.inputOverride = inputOverride == null ? "" : inputOverride.trim();
+    this.invertX = invertX;
+    this.invertY = invertY;
     this.targetFrameRate = Math.max(1, Math.min(engineFrameRate, MAX_CAPTURE_FRAME_RATE));
     this.visionConfig = visionConfig;
   }
@@ -183,6 +189,10 @@ final class WebcamSource implements FrameSource {
       return null;
     }
 
+    if (this.invertX || this.invertY) {
+      flipArgb(captured.argb, captured.width, captured.height, this.invertX, this.invertY);
+    }
+
     this.latestRawPreviewFrame = captured;
 
     this.correction.applyInPlace(captured.argb);
@@ -195,6 +205,35 @@ final class WebcamSource implements FrameSource {
     this.latestProcessedPreviewFrame = processed.frame();
 
     return processed.frame();
+  }
+
+  private static void flipArgb(int[] argb, int width, int height, boolean invertX, boolean invertY) {
+    if (invertY) {
+      for (int y = 0; y < height / 2; y++) {
+        final int top = y * width;
+        final int bottom = (height - 1 - y) * width;
+        for (int x = 0; x < width; x++) {
+          final int i = top + x;
+          final int j = bottom + x;
+          final int tmp = argb[i];
+          argb[i] = argb[j];
+          argb[j] = tmp;
+        }
+      }
+    }
+
+    if (invertX) {
+      for (int y = 0; y < height; y++) {
+        final int row = y * width;
+        for (int x = 0; x < width / 2; x++) {
+          final int i = row + x;
+          final int j = row + (width - 1 - x);
+          final int tmp = argb[i];
+          argb[i] = argb[j];
+          argb[j] = tmp;
+        }
+      }
+    }
   }
 
   private Frame grabImageFrame() throws Exception {
