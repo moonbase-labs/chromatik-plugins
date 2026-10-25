@@ -1028,8 +1028,8 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
       newKnob(pattern.projection.translateZ));
 
     addColumn(device, PANEL_COLUMN_WIDTH, "Rotate",
-      newKnob(pattern.projection.yaw),
       newKnob(pattern.projection.pitch),
+      newKnob(pattern.projection.yaw),
       newKnob(pattern.projection.roll));
 
     addColumn(device, PANEL_COLUMN_WIDTH, "Zoom",

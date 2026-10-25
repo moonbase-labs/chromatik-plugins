@@ -157,10 +157,10 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
       this.projection.scale,
       this.projection.scrollX,
       this.projection.scrollY,
-      this.projection.yaw,
       this.projection.roll,
       this.projection.gamma,
       this.projection.stretchX,
+      this.projection.stretchY,
       this.freeze,
       this.calibrate,
       this.gain,
@@ -173,8 +173,8 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
       this.invertX,
       this.invertY,
       this.backend,
-      this.projection.stretchY,
       this.projection.pitch,
+      this.projection.yaw,
       this.projection.translateX,
       this.projection.translateY,
       this.projection.translateZ,
@@ -454,8 +454,8 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
       newKnob(pattern.projection.translateZ));
 
     addColumn(device, PANEL_COLUMN_WIDTH, "Rotate",
-      newKnob(pattern.projection.yaw),
       newKnob(pattern.projection.pitch),
+      newKnob(pattern.projection.yaw),
       newKnob(pattern.projection.roll));
 
     addColumn(device, PANEL_COLUMN_WIDTH, "Tone",

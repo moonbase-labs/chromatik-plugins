@@ -127,15 +127,15 @@ public class ScreenCapturePattern extends LXPattern {
       this.projection.scale,
       this.projection.scrollX,
       this.projection.scrollY,
-      this.projection.yaw,
       this.projection.roll,
       this.projection.gamma,
       this.projection.stretchX,
+      this.projection.stretchY,
       // Past the eighth knob. Still mappable by hand, just not picked up by a surface. This order
       // matches the panel, so anything inserted here has to be inserted there too.
       this.freeze,
-      this.projection.stretchY,
       this.projection.pitch,
+      this.projection.yaw,
       this.projection.translateX,
       this.projection.translateY,
       this.projection.translateZ,

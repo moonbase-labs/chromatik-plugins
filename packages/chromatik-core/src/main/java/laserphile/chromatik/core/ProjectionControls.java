@@ -57,7 +57,7 @@ public final class ProjectionControls {
     new CompoundParameter("ScrollY", 0, -1, 1).setDescription("Vertical scroll offset");
 
   public final EnumParameter<ProjectionParams.WrapMode> wrapMode =
-    new EnumParameter<ProjectionParams.WrapMode>("Wrap", ProjectionParams.WrapMode.CLAMP)
+    new EnumParameter<ProjectionParams.WrapMode>("Wrap", ProjectionParams.WrapMode.TILE)
       .setDescription("How to sample outside the image bounds");
   public final EnumParameter<ProjectionParams.BackgroundMode> backgroundMode =
     new EnumParameter<ProjectionParams.BackgroundMode>("Background", ProjectionParams.BackgroundMode.BLACK)
@@ -86,12 +86,14 @@ public final class ProjectionControls {
    *
    * A pattern registers this straight after its own knob-worthy controls. Where the eighth knob
    * falls inside it therefore depends on what else that pattern put in front: Screen Capture spends
-   * only Level, so all seven are on knobs, whilst Video also spends Speed, which pushes XScale one
-   * past the knob row and onto the panel below it, leaving Gamma as its eighth knob.
+   * only Level, so all seven are on knobs, whilst Video also spends Speed, which pushes YScale one
+   * past the knob row and onto the panel below it, leaving XScale as its eighth knob.
    *
-   * Pitch is not here. Of the three rotations it is the one a projection least often sweeps, and
-   * leaving it off frees the slot for Gamma, which every rig wants to reach for once its LEDs are
-   * in front of it.
+   * Pitch and Yaw are not here. Roll is the rotation a projection onto a flat-ish rig sweeps, and
+   * leaving the other two off frees their slots for Gamma, which every rig wants to reach for once
+   * its LEDs are in front of it, and for the per-axis stretches that fit a source's aspect. The two
+   * rotations sit together at the head of {@link #remainingParameters}, Pitch then Yaw, so they
+   * read as a pair on the panel.
    */
   public final LXParameter.Collection knobParameters = new LXParameter.Collection();
 
@@ -116,13 +118,13 @@ public final class ProjectionControls {
     this.knobParameters.add("scale", this.scale);
     this.knobParameters.add("scrollX", this.scrollX);
     this.knobParameters.add("scrollY", this.scrollY);
-    this.knobParameters.add("yaw", this.yaw);
     this.knobParameters.add("roll", this.roll);
     this.knobParameters.add("gamma", this.gamma);
     this.knobParameters.add("stretchX", this.stretchX);
+    this.knobParameters.add("stretchY", this.stretchY);
 
-    this.remainingParameters.add("stretchY", this.stretchY);
     this.remainingParameters.add("pitch", this.pitch);
+    this.remainingParameters.add("yaw", this.yaw);
     this.remainingParameters.add("translateX", this.translateX);
     this.remainingParameters.add("translateY", this.translateY);
     this.remainingParameters.add("translateZ", this.translateZ);

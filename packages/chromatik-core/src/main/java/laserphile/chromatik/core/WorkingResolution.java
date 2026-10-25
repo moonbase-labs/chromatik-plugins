@@ -22,8 +22,19 @@ public final class WorkingResolution {
   /** What the Res control offers. Every pattern that opens a source shows the same list. */
   public static final String[] OPTIONS = { "128", "256", "384", "512", "Auto" };
 
-  /** Which entry above is Auto, and so the default. */
+  /** Which entry above is Auto. */
   public static final int AUTO_OPTION = 4;
+
+  /**
+   * The entry the Video pattern starts on: 512, the largest fixed size.
+   *
+   * <p>Auto sizes the frame from the point count, and on a rig whose points are bunched into dense
+   * panels spread over a wide area that comes out far too coarse: the dome's 4,960 points give a
+   * 141-pixel edge across several metres, so neighbouring LEDs land on the same few blurred pixels.
+   * 512 costs little to decode and leaves the picture readable on any rig. Auto stays on the menu
+   * for a model that really is a sparse, even grid.
+   */
+  public static final int DEFAULT_OPTION = 3;
 
   /** Longest edge per entry in {@link #OPTIONS}. 0 signals "work it out from the model". */
   private static final int[] EDGES = { 128, 256, 384, 512, 0 };

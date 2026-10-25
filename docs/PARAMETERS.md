@@ -10,20 +10,20 @@ Chromatik generates each panel from these automatically. They are listed in pane
 | `Speed` | Compound | `1` | 0.1 to 4 | Playback rate. Affects the playhead only, never the decode rate |
 | `Scale` | Compound | `1` | 0.1 to 10 | Zoom, larger values zoom in |
 | `ScrollX` `ScrollY` | Compound | `0` | -1 to 1 | UV offset, animate for a pan |
-| `Yaw` | Compound | `0` | -180 to 180 | Rotation about the vertical axis |
 | `Roll` | Compound | `0` | -180 to 180 | Rotation about the view axis |
 | `Gamma` | Compound | `1` | 1 to 3 | Pulls mid-tones down. Around 2.2 undoes video's own brightness curve, which is what an LED usually wants |
 | `XScale` `YScale` | Compound | `1` | 0.1 to 10 | Per-axis stretch on top of `Scale` |
 | `Pitch` | Compound | `0` | -180 to 180 | Rotation about the horizontal axis |
+| `Yaw` | Compound | `0` | -180 to 180 | Rotation about the vertical axis |
 | `TransX` `TransY` `TransZ` | Compound | `0` | -1 to 1 | Shift the image on each axis |
-| `Wrap` | Enum | `CLAMP` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
+| `Wrap` | Enum | `TILE` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
 | `Background` | Enum | `BLACK` | `BLACK` `CLEAR` | Colour for points rejected by `CLIP` |
 | `Interp` | Enum | `BILINEAR` | `NEAREST` `BILINEAR` | `NEAREST` is blocky, `BILINEAR` is smoother |
 | `Position` | Compound | `0` | 0 to 1 | Playhead. Follows playback, and seeks when you drag it |
 | `Play` | Boolean | `on` | | Run the playhead |
 | `Loop` | Boolean | `on` | | Start again on reaching the end |
 | `Restart` | Trigger | | | Jump back to the start and play |
-| `Res` | Discrete | `Auto` | `128` `256` `384` `512` `Auto` | Longest edge to decode frames at. `Auto` follows the model's point count. Never enlarges a smaller source |
+| `Res` | Discrete | `512` | `128` `256` `384` `512` `Auto` | Longest edge to decode frames at. `Auto` follows the model's point count, which is too coarse for a rig of dense panels. Never enlarges a smaller source |
 | `Browse` | Trigger | | | Pick a video with the native file chooser |
 | `Reload` | Trigger | | | Re-open the current file |
 | `File` | String | empty | | Absolute path, or relative to `~/Chromatik`. Written by `Browse` and saved with the project, no control of its own |
@@ -39,14 +39,15 @@ The same projection controls, minus everything that needs a timeline. `Speed`, `
 | `Level` | Compound | `1` | 0 to 1 | Master brightness |
 | `Scale` | Compound | `1` | 0.1 to 10 | Zoom, larger values zoom in |
 | `ScrollX` `ScrollY` | Compound | `0` | -1 to 1 | UV offset. With `Scale`, this is how you crop into part of the desktop |
-| `Yaw` `Roll` | Compound | `0` | -180 to 180 | Rotation about the vertical and the view axis |
+| `Roll` | Compound | `0` | -180 to 180 | Rotation about the view axis |
 | `Gamma` | Compound | `1` | 1 to 3 | Pulls mid-tones down. Around 2.2 undoes the display's own brightness curve |
 | `XScale` | Compound | `1` | 0.1 to 10 | Horizontal stretch on top of `Scale`. The one to reach for fitting a 16:10 desktop |
-| `Freeze` | Boolean | `off` | | Hold the current frame instead of following the screen |
 | `YScale` | Compound | `1` | 0.1 to 10 | Vertical stretch on top of `Scale` |
+| `Freeze` | Boolean | `off` | | Hold the current frame instead of following the screen |
 | `Pitch` | Compound | `0` | -180 to 180 | Rotation about the horizontal axis |
+| `Yaw` | Compound | `0` | -180 to 180 | Rotation about the vertical axis |
 | `TransX` `TransY` `TransZ` | Compound | `0` | -1 to 1 | Shift the image on each axis |
-| `Wrap` | Enum | `CLAMP` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
+| `Wrap` | Enum | `TILE` | `CLAMP` `CLIP` `TILE` `MIRROR` | Sampling behaviour outside the image |
 | `Background` | Enum | `BLACK` | `BLACK` `CLEAR` | Colour for points rejected by `CLIP` |
 | `Interp` | Enum | `BILINEAR` | `NEAREST` `BILINEAR` | `NEAREST` is blocky, `BILINEAR` is smoother |
 | `Screen` | Discrete | `0` | 0 to 3 | Which display to capture. Ignored on Windows, which captures the whole desktop |
@@ -67,7 +68,7 @@ The projection controls again, plus a clock, plus whatever the shader itself dec
 | `Speed` | Compound | `1` | 0 to 4 | How fast the shader's clock advances. `0` holds it still |
 | `Level` | Compound | `1` | 0 to 1 | Master brightness |
 | `Play` | Boolean | `on` | | Advance the shader's clock |
-| `Scale` `ScrollX` `ScrollY` `Yaw` `Roll` `Gamma` `XScale` `YScale` `Pitch` `TransX/Y/Z` `Wrap` `Background` `Interp` | | | | Exactly as on the other two patterns |
+| `Scale` `ScrollX` `ScrollY` `Roll` `Gamma` `XScale` `YScale` `Pitch` `Yaw` `TransX/Y/Z` `Wrap` `Background` `Interp` | | | | Exactly as on the other two patterns |
 | `Res` | Discrete | `Auto` | `128` `256` `384` `512` `Auto` | Edge length to render at. `Auto` follows the model's point count |
 | `Shader` | Discrete | *the current file* | the files in `~/Chromatik/LaserphileShader/` | Pick a shader from the folder. Rescanned each time the menu opens. A file from elsewhere, or none, shows as a first entry |
 | `Browse` | Trigger | | | Pick a `.glsl` file from anywhere. Opens in `~/Chromatik/LaserphileShader/` |
@@ -120,17 +121,17 @@ A MIDI surface binds its eight device knobs to the first eight of the pattern's 
 
 | Knob | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
-| **Video** | `Level` | `Speed` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Roll` | `Gamma` |
-| **Screen Capture** | `Level` | `Scale` | `ScrollX` | `ScrollY` | `Yaw` | `Roll` | `Gamma` | `XScale` |
+| **Video** | `Level` | `Speed` | `Scale` | `ScrollX` | `ScrollY` | `Roll` | `Gamma` | `XScale` |
+| **Screen Capture** | `Level` | `Scale` | `ScrollX` | `ScrollY` | `Roll` | `Gamma` | `XScale` | `YScale` |
 | **Shader** | *uniform 1* | *…* | *up to 6* | `Speed` | `Level` | `Scale` | `ScrollX` | `ScrollY` |
 
-Video and Screen Capture line up except at knob 2, where Screen Capture has no `Speed` to spend the slot on, so everything shifts up one and `XScale` reaches the row.
+Video and Screen Capture line up except at knob 2, where Screen Capture has no `Speed` to spend the slot on, so everything shifts up one and `YScale` reaches the row.
 
 Shader is the one that breaks the pattern, deliberately. What is worth playing on a shader is the shader, so its own uniforms take the knobs from the left, and `Speed` and `Level` follow them. The row above shows a shader declaring six or more; one declaring two puts `Speed` on knob 3 and `Level` on knob 4. Six is the cap, so that `Speed` and `Level` always reach a knob no matter how much a file declares. A `bool` uniform becomes a switch and is pushed past the continuous ones wherever it was declared, since a switch inside the first eight costs a knob outright.
 
 Because the set changes with the file, Shader is also the only pattern here whose knob layout is not fixed. Its device panel is its own for the same reason: Chromatik's default one reads a device's controls once and never looks again, so a knob created when a shader loads would never appear.
 
-`Pitch` is the rotation left off the knobs. A projection sweeps it least of the three, and the freed slot goes to `Gamma`, which is what you reach for once the video is on real LEDs. `Pitch` is still on the panel and still mappable by hand.
+`Pitch` and `Yaw` are the rotations left off the knobs. `Roll` is the one a projection onto a flat-ish rig sweeps, and the two freed slots go to `Gamma`, which is what you reach for once the video is on real LEDs, and to the per-axis stretches that fit a source's aspect. `Pitch` and `Yaw` sit together further down the panel, still mappable by hand.
 
 The surface order carries on down the panel from there, so the *n*th control you read is the *n*th a surface sees.
 

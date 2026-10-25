@@ -197,12 +197,12 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
       this.overlayBlobs,
       this.calibrate,
       this.oscEnabled,
-      this.projection.yaw,
       this.projection.roll,
       this.projection.gamma,
       this.projection.stretchX,
       this.projection.stretchY,
       this.projection.pitch,
+      this.projection.yaw,
       this.projection.translateX,
       this.projection.translateY,
       this.projection.translateZ,
@@ -505,8 +505,8 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
       newKnob(pattern.projection.translateZ));
 
     addColumn(device, PANEL_COLUMN_WIDTH, "Rotate",
-      newKnob(pattern.projection.yaw),
       newKnob(pattern.projection.pitch),
+      newKnob(pattern.projection.yaw),
       newKnob(pattern.projection.roll));
 
     addColumn(device, PANEL_COLUMN_WIDTH, "Tone",
