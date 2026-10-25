@@ -1,13 +1,17 @@
 // Wonka Tunnel
 //
-// The boat ride, through a tunnel tiled like a turtle's shell but dyed in the primaries. Seen from
-// the bow, the walls are irregular scutes of red, green and blue, two shades of each, every scute
-// darker toward its rim with faint growth rings inside, lit by whirling lamps, the whole tunnel
-// lurching and wobbling as it goes. The far end is black. Nothing in it ever reaches white: where lights pile up the colour is scaled down
-// rather than clipped, so it stays dyed. Speed below zero runs the ride backwards.
-// The palette is three families with a hue knob each: hue1 (the reds), hue2
-// (the greens) and hue3 (the blues). The first six controls reach a MIDI surface, so the hues sit
-// right after speed and wobble is the one left to the panel.
+// The boat ride, through a tunnel tiled like a turtle's shell dyed blue. Seen from the bow, the
+// walls are irregular scutes in light and dark blue, every scute darker toward its rim with
+// faint growth rings inside, lit by whirling lamps, the whole tunnel lurching and wobbling as it
+// goes. A single scute is lit at any moment: it flares, dims, and skips to another scute on
+// every beat of the hop knob, always somewhere round the wall at about the same depth into the
+// tunnel, a little nearer or further each time. The far end is black. Nothing in it ever
+// reaches white: where lights pile up the colour is scaled down rather than clipped, so it stays
+// dyed. Speed below zero runs the ride backwards.
+//
+// The scutes fall into three families with a hue knob each, hue1 to hue3, all blue until a knob
+// is turned. The first six controls reach a MIDI surface, so the hues sit right after speed with
+// hop and twist behind them, and wobble is the one left to the panel.
 
 uniform float time;
 uniform vec2 resolution;
@@ -16,9 +20,12 @@ uniform float speed;   // @range(-3, 3) @default(1)
 uniform float hue1;    // @range(-0.5, 0.5) @default(0)
 uniform float hue2;    // @range(-0.5, 0.5) @default(0)
 uniform float hue3;    // @range(-0.5, 0.5) @default(0)
-uniform float spin;    // @range(-2, 2) @default(0.4)
+uniform float hop;     // @range(0, 4) @default(0.5)
 uniform float twist;   // @range(0, 2) @default(0.6)
 uniform float wobble;  // @range(0, 1) @default(0.5)
+
+// How fast the tunnel turns about its axis. Fixed, so the knob slot goes to the hop rate.
+const float SPIN = 0.4;
 
 const float TAU = 6.2831853;
 
@@ -46,17 +53,20 @@ float valueNoise(vec2 p) {
   return mix(mix(a, b, fade.x), mix(c, d, fade.x), fade.y);
 }
 
-// The palette: a light and a dark scute of each primary, as hue, saturation and value, each
-// shifted by its family's knob. Picked by index, so a scute is one colour and its neighbour is a
-// different one.
+// The palette: three families, every one starting from the same blue, each with a light and a
+// dark scute and each shifted by its own knob. With the knobs at zero the whole tunnel is blue;
+// turning one pulls a third of the scutes to another hue. Picked by index, so a scute is one
+// colour and its neighbour is a different one.
+const float BLUE = 0.66;
+
 vec3 scuteColor(float index) {
   float pick = mod(floor(index), 6.0);
-  if (pick < 0.5) return vec3(0.00 + hue1, 0.95, 0.60);   // red
-  if (pick < 1.5) return vec3(0.33 + hue2, 0.90, 0.52);   // green
-  if (pick < 2.5) return vec3(0.66 + hue3, 0.90, 0.62);   // blue
-  if (pick < 3.5) return vec3(0.33 + hue2, 0.95, 0.28);   // dark green
-  if (pick < 4.5) return vec3(0.66 + hue3, 0.85, 0.34);   // dark blue
-  return vec3(0.00 + hue1, 0.95, 0.32);                   // dark red
+  if (pick < 0.5) return vec3(BLUE + hue1, 0.95, 0.60);   // family 1, light
+  if (pick < 1.5) return vec3(BLUE + hue2, 0.90, 0.52);   // family 2, light
+  if (pick < 2.5) return vec3(BLUE + hue3, 0.90, 0.62);   // family 3, light
+  if (pick < 3.5) return vec3(BLUE + hue2, 0.95, 0.28);   // family 2, dark
+  if (pick < 4.5) return vec3(BLUE + hue3, 0.85, 0.34);   // family 3, dark
+  return vec3(BLUE + hue1, 0.95, 0.32);                   // family 1, dark
 }
 
 void main(void) {
@@ -77,7 +87,7 @@ void main(void) {
 
   // The wall breathes: a kaleidoscopic ripple that bends the bands as they pass.
   angle += 0.15 * wobble * sin(depth * 0.7 + time * 1.3) * sin(angle * 3.0);
-  float wall = angle / TAU + depth * 0.05 * twist + time * spin * 0.2;
+  float wall = angle / TAU + depth * 0.05 * twist + time * SPIN * 0.2;
 
   // The wall is tiled with irregular polygons: a Voronoi cell for every jittered seed on the
   // unwrapped wall, each pane a flat colour, with dark grout between them. The seed lattice
@@ -118,11 +128,30 @@ void main(void) {
   float lit = smoothstep(0.25, 0.85, valueNoise(vec2(wall * 3.0 + time * 0.15, depth * 0.35 - time * 0.3)));
   vec3 bands = hsv2rgb(scute) * grout * rimShade * rings * (0.25 + 0.75 * lit);
 
+  // The skipping light. Each beat picks one scute: a random position round the wall, at a depth
+  // that stays about a third of the way down the tunnel, nudged nearer or further at random. The
+  // pick is made from the travel at the start of the beat, so the scute holds while it is lit and
+  // rides toward the viewer with everything else.
+  float hopRate = max(hop, 0.0001);
+  float beatIndex = floor(time * hopRate);
+  float beatPhase = fract(time * hopRate);
+  float travelAtBeat = (beatIndex / hopRate) * speed * 1.5;
+  const float HOLD_DEPTH = 3.0;
+  float aheadDepth = HOLD_DEPTH + (hash(beatIndex * 5.1 + 3.0) - 0.5) * 1.6;
+  vec2 targetId = vec2(
+    floor(hash(beatIndex * 3.7 + 11.0) * AROUND),
+    floor((aheadDepth + travelAtBeat) * 1.2));
+  float onTarget = step(0.5, 1.0 - abs(nearestId.x - targetId.x)) * step(0.5, 1.0 - abs(nearestId.y - targetId.y));
+  float flare = exp(-beatPhase * 2.0);
+  float skipLight = onTarget * flare * step(0.01, hop);
+  vec3 litScute = hsv2rgb(vec3(scute.x, scute.y * 0.7, 1.0)) * grout * (0.7 + 0.3 * rings);
+  bands = mix(bands, litScute, skipLight);
+
   vec3 color = bands;
 
-  // The far end is black.
+  // The far end is black, though the skipping light still shows from well down the tunnel.
   float distanceFade = smoothstep(0.0, 0.25, radius);
-  color *= distanceFade * 0.9;
+  color *= mix(distanceFade, max(distanceFade, 0.75), skipLight) * 0.9;
 
   // Keep it dyed: where the lights pile up, bring the whole colour down to fit rather than
   // letting the channels clip toward white, and pull the least channel down so no pixel greys.
