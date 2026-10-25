@@ -25,6 +25,7 @@ import heronarts.lx.model.LXModel;
 import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.CompoundParameter;
 import heronarts.lx.parameter.DiscreteParameter;
+import heronarts.lx.parameter.LXParameter;
 import heronarts.lx.parameter.StringParameter;
 import heronarts.lx.parameter.TriggerParameter;
 import heronarts.lx.pattern.LXPattern;
@@ -194,17 +195,9 @@ public class VideoPattern extends LXPattern {
     // it tears down the current source and opens another. All three are the tail of the panel, so
     // every control ahead of them lines up with its position on a surface.
 
-    this.fileName.addListener(parameter -> this.openRequested = true);
-    this.workingResolution.addListener(parameter -> this.openRequested = true);
     this.browse.onTrigger(this::showFileChooser);
     this.reload.onTrigger(() -> this.openRequested = true);
     this.restart.onTrigger(() -> this.restartRequested = true);
-
-    this.position.addListener(parameter -> {
-      if (!this.updatingPosition) {
-        this.positionEdited = true;
-      }
-    });
   }
 
   private void openCurrentSource() {
@@ -394,6 +387,17 @@ public class VideoPattern extends LXPattern {
 
     if (this.workingResolution.getValuei() == WorkingResolution.AUTO_OPTION) {
       this.openRequested = true;
+    }
+  }
+
+  @Override
+  public void onParameterChanged(LXParameter parameter) {
+    super.onParameterChanged(parameter);
+
+    if (parameter == this.fileName || parameter == this.workingResolution) {
+      this.openRequested = true;
+    } else if (parameter == this.position && !this.updatingPosition) {
+      this.positionEdited = true;
     }
   }
 

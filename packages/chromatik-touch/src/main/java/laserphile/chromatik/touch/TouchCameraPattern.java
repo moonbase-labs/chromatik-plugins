@@ -14,6 +14,7 @@ import heronarts.lx.model.LXModel;
 import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.CompoundParameter;
 import heronarts.lx.parameter.DiscreteParameter;
+import heronarts.lx.parameter.LXParameter;
 import heronarts.lx.parameter.StringParameter;
 import heronarts.lx.parameter.TriggerParameter;
 import heronarts.lx.pattern.LXPattern;
@@ -181,22 +182,7 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
       this.projection.backgroundMode,
       this.projection.interpolation);
 
-    this.cameraDevice.addListener(parameter -> onCameraDeviceSelected());
-    this.cameraIndex.addListener(parameter -> this.openRequested = true);
-    this.invertX.addListener(parameter -> this.openRequested = true);
-    this.invertY.addListener(parameter -> this.openRequested = true);
-    this.backend.addListener(parameter -> this.openRequested = true);
-    this.cameraName.addListener(parameter -> this.openRequested = true);
-    this.inputOverride.addListener(parameter -> this.openRequested = true);
-    this.workingResolution.addListener(parameter -> this.openRequested = true);
-    this.previewMode.addListener(parameter -> this.previewCanvas.setMode(this.previewMode.getValuei()));
     this.calibrate.onTrigger(this.visionConfig::requestCalibration);
-    this.gain.addListener(parameter -> syncVisionConfig());
-    this.threshold.addListener(parameter -> syncVisionConfig());
-    this.invertDifference.addListener(parameter -> syncVisionConfig());
-    this.circularMask.addListener(parameter -> syncVisionConfig());
-    this.maskRadius.addListener(parameter -> syncVisionConfig());
-    this.outputMode.addListener(parameter -> this.openRequested = false);
     this.refreshCameras.onTrigger(() -> {
       refreshCameraList();
       this.openRequested = true;
@@ -212,6 +198,33 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
 
     if (this.workingResolution.getValuei() == WorkingResolution.AUTO_OPTION) {
       this.openRequested = true;
+    }
+  }
+
+  @Override
+  public void onParameterChanged(LXParameter parameter) {
+    super.onParameterChanged(parameter);
+
+    if (parameter == this.cameraDevice) {
+      onCameraDeviceSelected();
+    } else if (parameter == this.previewMode) {
+      this.previewCanvas.setMode(this.previewMode.getValuei());
+    } else if (parameter == this.outputMode) {
+      this.openRequested = false;
+    } else if (parameter == this.cameraIndex
+      || parameter == this.invertX
+      || parameter == this.invertY
+      || parameter == this.backend
+      || parameter == this.cameraName
+      || parameter == this.inputOverride
+      || parameter == this.workingResolution) {
+      this.openRequested = true;
+    } else if (parameter == this.gain
+      || parameter == this.threshold
+      || parameter == this.invertDifference
+      || parameter == this.circularMask
+      || parameter == this.maskRadius) {
+      syncVisionConfig();
     }
   }
 

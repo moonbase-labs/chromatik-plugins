@@ -14,6 +14,7 @@ import heronarts.lx.model.LXModel;
 import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.CompoundParameter;
 import heronarts.lx.parameter.DiscreteParameter;
+import heronarts.lx.parameter.LXParameter;
 import heronarts.lx.parameter.StringParameter;
 import heronarts.lx.parameter.TriggerParameter;
 import heronarts.lx.pattern.LXPattern;
@@ -209,34 +210,12 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
       this.projection.backgroundMode,
       this.projection.interpolation);
 
-    this.cameraIndex.addListener(parameter -> this.openRequested = true);
-    this.invertX.addListener(parameter -> this.openRequested = true);
-    this.invertY.addListener(parameter -> this.openRequested = true);
-    this.backend.addListener(parameter -> this.openRequested = true);
-    this.cameraName.addListener(parameter -> this.openRequested = true);
-    this.inputOverride.addListener(parameter -> this.openRequested = true);
-    this.workingResolution.addListener(parameter -> this.openRequested = true);
-    this.previewMode.addListener(parameter -> this.previewCanvas.setMode(this.previewMode.getValuei()));
-    this.cameraDevice.addListener(parameter -> onCameraDeviceSelected());
     this.refreshCameras.onTrigger(() -> {
       refreshCameraList();
       this.openRequested = true;
     });
 
     this.calibrate.onTrigger(this.visionConfig::requestCalibration);
-
-    this.gain.addListener(parameter -> syncVisionConfig());
-    this.threshold.addListener(parameter -> syncVisionConfig());
-    this.minBlobArea.addListener(parameter -> syncVisionConfig());
-    this.segmentCount.addListener(parameter -> syncVisionConfig());
-    this.circularMask.addListener(parameter -> syncVisionConfig());
-    this.maskRadius.addListener(parameter -> syncVisionConfig());
-    this.invertDifference.addListener(parameter -> syncVisionConfig());
-    this.overlayBlobs.addListener(parameter -> syncVisionConfig());
-    this.oscEnabled.addListener(parameter -> syncVisionConfig());
-    this.oscHost.addListener(parameter -> syncVisionConfig());
-    this.oscPort.addListener(parameter -> syncVisionConfig());
-    this.oscPrefix.addListener(parameter -> syncVisionConfig());
 
     refreshCameraList();
     syncVisionConfig();
@@ -248,6 +227,38 @@ public class TouchBlobOscPattern extends LXPattern implements UIDeviceControls<T
 
     if (this.workingResolution.getValuei() == WorkingResolution.AUTO_OPTION) {
       this.openRequested = true;
+    }
+  }
+
+  @Override
+  public void onParameterChanged(LXParameter parameter) {
+    super.onParameterChanged(parameter);
+
+    if (parameter == this.cameraDevice) {
+      onCameraDeviceSelected();
+    } else if (parameter == this.previewMode) {
+      this.previewCanvas.setMode(this.previewMode.getValuei());
+    } else if (parameter == this.cameraIndex
+      || parameter == this.invertX
+      || parameter == this.invertY
+      || parameter == this.backend
+      || parameter == this.cameraName
+      || parameter == this.inputOverride
+      || parameter == this.workingResolution) {
+      this.openRequested = true;
+    } else if (parameter == this.gain
+      || parameter == this.threshold
+      || parameter == this.minBlobArea
+      || parameter == this.segmentCount
+      || parameter == this.circularMask
+      || parameter == this.maskRadius
+      || parameter == this.invertDifference
+      || parameter == this.overlayBlobs
+      || parameter == this.oscEnabled
+      || parameter == this.oscHost
+      || parameter == this.oscPort
+      || parameter == this.oscPrefix) {
+      syncVisionConfig();
     }
   }
 

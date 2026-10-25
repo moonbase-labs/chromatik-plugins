@@ -223,8 +223,6 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
 
     updateRemoteControls();
 
-    this.fileName.addListener(parameter -> this.openRequested = true);
-    this.workingResolution.addListener(parameter -> this.openRequested = true);
     this.browse.onTrigger(this::showFileChooser);
     this.reload.onTrigger(() -> this.openRequested = true);
   }
@@ -632,6 +630,15 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
     super.onModelChanged(model);
 
     if (this.workingResolution.getValuei() == WorkingResolution.AUTO_OPTION) {
+      this.openRequested = true;
+    }
+  }
+
+  @Override
+  public void onParameterChanged(LXParameter parameter) {
+    super.onParameterChanged(parameter);
+
+    if (parameter == this.fileName || parameter == this.workingResolution) {
       this.openRequested = true;
     }
   }

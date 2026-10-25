@@ -12,6 +12,7 @@ import heronarts.lx.LXComponent;
 import heronarts.lx.model.LXModel;
 import heronarts.lx.parameter.BooleanParameter;
 import heronarts.lx.parameter.DiscreteParameter;
+import heronarts.lx.parameter.LXParameter;
 import heronarts.lx.pattern.LXPattern;
 
 /**
@@ -145,10 +146,15 @@ public class ScreenCapturePattern extends LXPattern {
     // device opens, so changing any of them reopens it, and a screen device can take seconds to
     // open. They are discrete controls a surface could happily bind, which is exactly why the
     // exclusion is deliberate: swept from a knob, they would thrash the device.
+  }
 
-    this.screen.addListener(parameter -> this.openRequested = true);
-    this.cursor.addListener(parameter -> this.openRequested = true);
-    this.workingResolution.addListener(parameter -> this.openRequested = true);
+  @Override
+  public void onParameterChanged(LXParameter parameter) {
+    super.onParameterChanged(parameter);
+
+    if (parameter == this.screen || parameter == this.cursor || parameter == this.workingResolution) {
+      this.openRequested = true;
+    }
   }
 
   /**
