@@ -69,7 +69,8 @@ The projection controls again, plus a clock, plus whatever the shader itself dec
 | `Play` | Boolean | `on` | | Advance the shader's clock |
 | `Scale` `ScrollX` `ScrollY` `Yaw` `Roll` `Gamma` `XScale` `YScale` `Pitch` `TransX/Y/Z` `Wrap` `Background` `Interp` | | | | Exactly as on the other two patterns |
 | `Res` | Discrete | `Auto` | `128` `256` `384` `512` `Auto` | Edge length to render at. `Auto` follows the model's point count |
-| `Browse` | Trigger | | | Pick a `.glsl` file. Opens in `~/Chromatik/LaserphileShader/` |
+| `Shader` | Discrete | *the current file* | the files in `~/Chromatik/LaserphileShader/` | Pick a shader from the folder. Rescanned each time the menu opens. A file from elsewhere, or none, shows as a first entry |
+| `Browse` | Trigger | | | Pick a `.glsl` file from anywhere. Opens in `~/Chromatik/LaserphileShader/` |
 | `Reload` | Trigger | | | Read and compile the file again |
 | `File` | String | empty | | The chosen path. Saved with the project, relative to `~/Chromatik` where possible |
 | `Error` | String | empty | | What the compiler said about the last file that would not build |
@@ -133,4 +134,4 @@ Because the set changes with the file, Shader is also the only pattern here whos
 
 The surface order carries on down the panel from there, so the *n*th control you read is the *n*th a surface sees.
 
-Controls held back from the surface entirely sit at the end of the panel, which is what keeps everything ahead of them lined up. On Video that is `Res`, `Browse`, `Reload` and `File`. On Screen Capture it is `Screen`, `Cursor` and `Res`. On Shader it is `Res`, `Browse`, `Reload`, `File` and `Error`. `Browse`, `Reload`, `File` and `Error` go to disk or come back from it; the rest tear down the current source and open another, and both a screen device and a GL context take real time to build, so a swept knob would thrash them.
+Controls held back from the surface entirely sit at the end of the panel, which is what keeps everything ahead of them lined up. On Video that is `Res`, `Browse`, `Reload` and `File`. On Screen Capture it is `Screen`, `Cursor` and `Res`. On Shader it is `Res`, `Shader`, `Browse`, `Reload`, `File` and `Error`. `Shader`, `Browse`, `Reload`, `File` and `Error` go to disk or come back from it; the rest tear down the current source and open another, and both a screen device and a GL context take real time to build, so a swept knob would thrash them.

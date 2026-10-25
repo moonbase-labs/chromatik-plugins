@@ -10,6 +10,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -23,7 +24,9 @@ import laserphile.chromatik.core.VideoFrame;
 import laserphile.chromatik.core.WorkingResolution;
 
 import heronarts.glx.GLX;
+import heronarts.glx.event.MouseEvent;
 import heronarts.glx.ui.UI2dContainer;
+import heronarts.glx.ui.component.UIDropMenu;
 import heronarts.glx.ui.component.UIKnob;
 import heronarts.glx.ui.component.UILabel;
 import heronarts.glx.ui.component.UISwitch;
@@ -104,6 +107,9 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
    */
   private static final String SHADER_MEDIA_FOLDER = "LaserphileShader";
 
+  /** What the Shader menu shows when no file is chosen, since that renders the built-in shader. */
+  private static final String BUILT_IN_LABEL = "Built-in";
+
   /**
    * Saved under a prefix so that a shader is free to call a uniform whatever it likes without
    * colliding with a control this pattern already owns. A shader with a uniform called "level"
@@ -139,6 +145,25 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
     new TriggerParameter("Browse").setDescription("Pick a .glsl fragment shader");
   public final TriggerParameter reload =
     new TriggerParameter("Reload").setDescription("Read and compile the shader again");
+
+  /**
+   * The shaders in this package's folder, to pick one without a file dialog. Derived from File
+   * rather than the other way round: File is what is saved and what loads, and this is a view of
+   * it that happens to be a menu.
+   */
+  public final DiscreteParameter shader =
+    new DiscreteParameter("Shader", new String[] { BUILT_IN_LABEL }, 0)
+      .setDescription("Pick a shader from ~/Chromatik/LaserphileShader");
+
+  /** File names behind the menu's entries, in menu order; empty for an entry that is not a file. */
+  private volatile List<String> shaderMenuFiles = List.of("");
+
+  // Raised while the menu is being pointed at File, so the change it fires is not read as a pick.
+  private volatile boolean syncingShaderMenu = false;
+
+  // Raised while a project restores its saved values, so the menu's saved index is not read as a
+  // pick either: the folder may have changed since, and File is what was saved.
+  private volatile boolean restoringProject = false;
 
   /**
    * Why the last read did not take, or empty when the running shader is the one on disk. Written
@@ -212,6 +237,7 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
     // added earlier would offset every control after it and break the panel's match with the
     // knobs.
     addParameter("workingResolution", this.workingResolution);
+    addParameter("shader", this.shader);
     addParameter("browse", this.browse);
     addParameter("reload", this.reload);
 
@@ -225,6 +251,8 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
 
     this.browse.onTrigger(this::showFileChooser);
     this.reload.onTrigger(() -> this.openRequested = true);
+
+    syncShaderMenu();
   }
 
   /**
@@ -268,9 +296,9 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
     appendMappable(remote, this.projection.knobParameters);
     appendMappable(remote, this.projection.remainingParameters);
 
-    // Browse, Reload and Res stay out of the list. The first two read a file from disk, which is
-    // not something to hand to a control surface, and Res tears the context down and builds
-    // another.
+    // Shader, Browse, Reload and Res stay out of the list. The first three read a file from disk,
+    // which is not something to hand to a control surface, and Res tears the context down and
+    // builds another.
     setCustomRemoteControls(remote.toArray(new LXListenableNormalizedParameter[0]));
   }
 
@@ -548,6 +576,113 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
     this.fileName.setValue(relativizeToMediaFolder(chosenPath));
   }
 
+  /** The shader files in this package's folder, by name, in alphabetical order. */
+  private List<String> shaderFilesInFolder() {
+    final File folder = this.lx.getMediaFile(SHADER_MEDIA_FOLDER);
+    final File[] entries = (folder == null) ? null : folder.listFiles();
+    final List<String> names = new ArrayList<>();
+
+    if (entries == null) {
+      return names;
+    }
+
+    for (File entry : entries) {
+      if (entry.isFile() && hasShaderExtension(entry.getName())) {
+        names.add(entry.getName());
+      }
+    }
+
+    names.sort(String.CASE_INSENSITIVE_ORDER);
+
+    return names;
+  }
+
+  private static boolean hasShaderExtension(String name) {
+    final int dot = name.lastIndexOf('.');
+
+    if (dot < 0) {
+      return false;
+    }
+
+    final String extension = name.substring(dot + 1).toLowerCase(Locale.ROOT);
+
+    for (String allowed : SHADER_EXTENSIONS) {
+      if (allowed.equals(extension)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private static String withoutExtension(String name) {
+    final int dot = name.lastIndexOf('.');
+
+    return (dot > 0) ? name.substring(0, dot) : name;
+  }
+
+  /**
+   * Point the Shader menu at the folder as it is now, with the current file selected.
+   *
+   * A file from anywhere else, or none at all, shows as a first entry that picking does nothing
+   * with, so the menu always says what is running without claiming the folder holds it. Rescanned
+   * whenever File changes and whenever the menu opens, so a shader saved into the folder is
+   * offered the next time anyone looks.
+   */
+  private void syncShaderMenu() {
+    final List<String> files = shaderFilesInFolder();
+    final String resolved = resolvePath(this.fileName.getString());
+    final File current = (resolved == null) ? null : new File(resolved);
+    final File folder = this.lx.getMediaFile(SHADER_MEDIA_FOLDER);
+    final boolean inFolder = current != null && folder != null
+      && current.getParentFile() != null
+      && current.getParentFile().getAbsolutePath().equals(folder.getAbsolutePath());
+    int selected = inFolder ? files.indexOf(current.getName()) : -1;
+
+    final List<String> menuFiles = new ArrayList<>();
+    final List<String> labels = new ArrayList<>();
+
+    if (selected < 0) {
+      menuFiles.add("");
+      labels.add((current == null) ? BUILT_IN_LABEL : current.getName());
+      selected = 0;
+    }
+
+    for (String file : files) {
+      menuFiles.add(file);
+      labels.add(withoutExtension(file));
+    }
+
+    this.syncingShaderMenu = true;
+    try {
+      this.shaderMenuFiles = List.copyOf(menuFiles);
+      this.shader.setOptions(labels.toArray(new String[0]), true);
+      this.shader.setValue(selected);
+    } finally {
+      this.syncingShaderMenu = false;
+    }
+  }
+
+  /** A pick from the Shader menu becomes a path in File, which is what actually loads it. */
+  private void onShaderPicked() {
+    if (this.syncingShaderMenu || this.restoringProject) {
+      return;
+    }
+
+    final List<String> files = this.shaderMenuFiles;
+    final int index = this.shader.getValuei();
+
+    if (index < 0 || index >= files.size() || files.get(index).isEmpty()) {
+      return;
+    }
+
+    final String picked = String.format("%s/%s", SHADER_MEDIA_FOLDER, files.get(index));
+
+    if (!resolvePath(picked).equals(resolvePath(this.fileName.getString()))) {
+      this.fileName.setValue(picked);
+    }
+  }
+
   /**
    * Store a path under ~/Chromatik as a relative one, including one reached through a folder
    * linked into it, so a project shared with someone else still finds the shader next to their
@@ -640,6 +775,12 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
 
     if (parameter == this.fileName || parameter == this.workingResolution) {
       this.openRequested = true;
+    }
+
+    if (parameter == this.fileName) {
+      syncShaderMenu();
+    } else if (parameter == this.shader) {
+      onShaderPicked();
     }
   }
 
@@ -763,13 +904,21 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
       rebuildUniformControls(declarationsOnDisk());
     }
 
-    super.load(lx, object);
+    this.restoringProject = true;
+    try {
+      super.load(lx, object);
+    } finally {
+      this.restoringProject = false;
+    }
 
     // Again, and it has to be after. A device serialises its remote control list, so super.load
     // restores whatever was saved, and what was saved is the set from before this shader's knobs
     // existed. Building them first is what gives the saved values somewhere to land; putting them
     // on a surface has to wait until the restore has had its turn.
     updateRemoteControls();
+
+    // The menu's saved index was ignored above; what File says is what the menu should show.
+    syncShaderMenu();
   }
 
   /**
@@ -799,6 +948,7 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
   }
 
   private static final float PANEL_COLUMN_WIDTH = 76;
+  private static final float SHADER_MENU_WIDTH = 160;
   private static final float UNIFORM_SECTION_WIDTH = 200;
   private static final float ERROR_LABEL_HEIGHT = 46;
 
@@ -821,9 +971,23 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
     device.setLayout(UI2dContainer.Layout.HORIZONTAL, 4);
     device.setChildSpacing(6);
 
+    // Rescans the folder as the menu opens, so a shader saved there since is on the list.
+    final UIDropMenu shaderMenu = new UIDropMenu(0, 0, PANEL_COLUMN_WIDTH, pattern.shader) {
+      @Override
+      public void onMousePressed(MouseEvent mouseEvent, float mouseX, float mouseY) {
+        pattern.syncShaderMenu();
+        super.onMousePressed(mouseEvent, mouseX, mouseY);
+      }
+    };
+
+    // Opens upward: the device panel sits at the foot of the window, so a list this long would
+    // run off the bottom.
+    shaderMenu.setMenuWidth(SHADER_MENU_WIDTH).setDirection(UIDropMenu.Direction.UP);
+
     // Wider than the default 52 so File/Look controls don't overflow onto neighboring knobs
     // and steal mouse hits from Move/Rotate/Zoom.
     addColumn(device, PANEL_COLUMN_WIDTH, "File",
+      shaderMenu,
       newButton(pattern.browse, PANEL_COLUMN_WIDTH),
       newButton(pattern.reload, PANEL_COLUMN_WIDTH),
       newDropMenu(pattern.workingResolution, PANEL_COLUMN_WIDTH));
