@@ -402,10 +402,11 @@ public class TouchCameraPattern extends LXPattern implements UIDeviceControls<To
     this.reportedSilentCapture = true;
 
     LX.log(
-      "[LaserphileTouch] webcam capture has produced no frames. On macOS, check that Chromatik has "
-        + "Camera permission (System Settings > Privacy & Security > Camera) and restart it after "
-        + "granting; otherwise check the input selection (Camera/CamName/Input) and close other apps "
-        + "using the camera, then toggle the pattern off and on to retry.");
+      "[LaserphileTouch] webcam capture has produced no frames. If the open failed, the decode error "
+        + "logged above says why. Otherwise, on macOS check that Chromatik has Camera permission "
+        + "(System Settings > Privacy & Security > Camera) and restart it after granting; on any "
+        + "platform check the input selection (Camera/CamName/Input) and close other apps using the "
+        + "camera, then toggle the pattern off and on to retry.");
   }
 
   private static final float PANEL_COLUMN_WIDTH = 76;

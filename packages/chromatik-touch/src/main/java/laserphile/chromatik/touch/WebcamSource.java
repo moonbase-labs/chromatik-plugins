@@ -82,6 +82,15 @@ final class WebcamSource implements FrameSource {
 
     final String format = formatFor(device);
 
+    if (device == CaptureDevice.AVFOUNDATION) {
+      // A build macOS will never grant the camera to fails here, at once and with the reason,
+      // rather than spinning in FFmpeg until BoundedOpen gives up on it.
+      final String denial = MacCameraAccess.denialReason();
+      if (denial != null) {
+        throw new IllegalStateException(denial);
+      }
+    }
+
     Exception lastFailure = null;
     for (OpenAttempt attempt : openAttempts(device)) {
       final FFmpegFrameGrabber opening = new FFmpegFrameGrabber(attempt.input);
@@ -328,8 +337,9 @@ final class WebcamSource implements FrameSource {
   private static String openFailureAdvice(CaptureDevice device) {
     return switch (device) {
       case AVFOUNDATION -> "Unable to open webcam via avfoundation. Check that Chromatik has Camera "
-        + "permission (System Settings > Privacy & Security > Camera) and restart it after granting, "
-        + "close other apps using the camera, and check the Camera index.";
+        + "permission (System Settings > Privacy & Security > Camera) and restart it after granting; "
+        + "if Chromatik is not listed there, this build lacks the camera entitlement and cannot be "
+        + "granted it. Otherwise close other apps using the camera and check the Camera index.";
       case DSHOW -> "Unable to open webcam on Windows DirectShow. Try Refresh, then selecting CamList "
         + "again. If it still fails, close other apps using the camera and check Windows camera "
         + "privacy permissions for Chromatik.";

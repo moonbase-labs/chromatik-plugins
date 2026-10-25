@@ -30,7 +30,8 @@ import heronarts.lx.LX;
  *
  * <p>The start runs on its own daemon thread and the caller waits on it for at most
  * {@link #DEADLINE_MS}. Past the deadline the caller gives up, says so in the log naming Camera
- * permission as the likely cause, and fails its open; the opener thread is left to spin, and if
+ * permission as the likely cause ({@link MacCameraAccess} catches the build that can never have
+ * it before the open is even tried), and fails its open; the opener thread is left to spin, and if
  * the device ever does answer, the opener releases it. Only one opener may be outstanding per
  * process: a second open while one is still inside the device waits for it if it is young (the
  * user switched cameras during a healthy open) and is refused if it is past the deadline, so a
@@ -138,7 +139,8 @@ final class BoundedOpen {
         "%s webcam open (%s) has not returned after %d s and has been abandoned. FFmpeg waits "
           + "forever for a first frame the camera never delivers: most likely Chromatik lacks "
           + "Camera permission (System Settings > Privacy & Security > Camera; restart Chromatik "
-          + "after granting it), or another app holds the camera. The opener thread '%s' keeps "
+          + "after granting it; a Chromatik not listed there lacks the camera entitlement and can "
+          + "never be granted it), or another app holds the camera. The opener thread '%s' keeps "
           + "spinning until the device answers; no other webcam open will be attempted until it "
           + "does.",
         logTag,
