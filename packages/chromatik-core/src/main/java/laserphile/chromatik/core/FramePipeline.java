@@ -2,6 +2,9 @@ package laserphile.chromatik.core;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -30,6 +33,16 @@ import heronarts.lx.LX;
  * volatile for looping and an atomic seek request. A seek carries a generation number, so a
  * rapid scrub coalesces down to its newest target and any frames still in flight from earlier
  * targets are discarded rather than shown.
+ *
+ * A decode thread can get stuck somewhere no interrupt reaches: inside a capture device that never
+ * delivers a first frame, or on the process-wide monitor JavaCV takes around every decoder open,
+ * which a stuck open anywhere else in the process holds forever. Neither {@link #stop()} nor
+ * {@link #start} may wait on that. A thread that does not exit is abandoned and remembered, the log
+ * says so once, and no new thread is started on this pipeline while it lives: a second one would
+ * only join it on the same lock, and each reopen would leave another behind. The start that was
+ * asked for is kept instead and happens as soon as the old thread finally goes, or on the next
+ * open after that. A watchdog also reports any open that has been running longer than a few
+ * seconds, so a stuck open shows up in the log without a thread dump.
  */
 public final class FramePipeline {
 
@@ -43,6 +56,24 @@ public final class FramePipeline {
   private static final long TWENTY_MILLISECONDS = 20;
 
   private static final long TWO_SECONDS_IN_MS = 2000;
+
+  /**
+   * How long an open may run before the watchdog mentions it. Long enough that a normal open
+   * (tens of milliseconds) never trips it; the first open of a session, which also pays for
+   * extracting FFmpeg's natives, can, and the line that follows when it returns says it was fine.
+   */
+  private static final long SLOW_OPEN_MS = 5000;
+
+  /**
+   * One thread for every pipeline in the process, used only to say that an open is taking too
+   * long. A daemon, so it cannot keep Chromatik alive on exit.
+   */
+  private static final ScheduledExecutorService OPEN_WATCHDOG =
+    Executors.newSingleThreadScheduledExecutor(task -> {
+      final Thread thread = new Thread(task, "laserphile-open-watchdog");
+      thread.setDaemon(true);
+      return thread;
+    });
 
   /**
    * How many grabs may fail in a row before the decode thread stops trying. A damaged frame in the
@@ -75,6 +106,16 @@ public final class FramePipeline {
 
   private Thread thread;
 
+  /**
+   * A decode thread that {@link #stop()} could not get to exit, kept so that {@link #start} can
+   * tell whether it is still around. Null once it has exited or when nothing was ever abandoned.
+   */
+  private Thread abandonedThread;
+
+  /** A start held back by {@link #abandonedThread}, run once that thread exits. */
+  private FrameSource deferredSource;
+  private int deferredLongestEdge;
+
   // Engine-thread state, never touched by the decode thread.
   private VideoFrame current;
   private int seekGeneration = 0;
@@ -85,6 +126,22 @@ public final class FramePipeline {
   public void start(FrameSource source, int longestEdge) {
     stop();
 
+    if (this.abandonedThread != null) {
+      LX.log(String.format(
+        "[LaserphileVideo] not starting decode for %s yet: the previous decode thread '%s' has "
+          + "still not exited. It starts as soon as that thread does; if the log never says so, "
+          + "restart Chromatik.",
+        source,
+        this.abandonedThread.getName()));
+      this.deferredSource = source;
+      this.deferredLongestEdge = longestEdge;
+      return;
+    }
+
+    launch(source, longestEdge);
+  }
+
+  private void launch(FrameSource source, int longestEdge) {
     final int epoch = this.startEpoch.incrementAndGet();
 
     this.running = true;
@@ -99,6 +156,44 @@ public final class FramePipeline {
   }
 
   /**
+   * Run a start that {@link #start} held back, if the thread that held it back has gone.
+   *
+   * Called from the engine-thread reads, which happen every render, so the deferred start lands
+   * within a frame of the old thread exiting rather than waiting for the user to do something.
+   */
+  private void startDeferredIfUnblocked() {
+    if (this.deferredSource == null || !forgetAbandonedThreadIfExited()) {
+      return;
+    }
+
+    final FrameSource source = this.deferredSource;
+    final int longestEdge = this.deferredLongestEdge;
+    this.deferredSource = null;
+
+    LX.log(String.format("[LaserphileVideo] starting the held-back decode for %s", source));
+    launch(source, longestEdge);
+  }
+
+  /**
+   * Drop the abandoned thread once it has exited, with a log line to close off the one that said
+   * it was stuck. Returns true when no abandoned thread is in the way.
+   */
+  private boolean forgetAbandonedThreadIfExited() {
+    if (this.abandonedThread == null) {
+      return true;
+    }
+    if (this.abandonedThread.isAlive()) {
+      return false;
+    }
+
+    LX.log(String.format(
+      "[LaserphileVideo] the abandoned decode thread '%s' has now exited",
+      this.abandonedThread.getName()));
+    this.abandonedThread = null;
+    return true;
+  }
+
+  /**
    * Open the source, then hand off to whichever loop suits it.
    *
    * open() can block for a long time and, for screen capture without permission, forever. It runs
@@ -106,7 +201,7 @@ public final class FramePipeline {
    */
   private void openAndRun(FrameSource source, int longestEdge, int epoch) {
     try {
-      source.open(longestEdge);
+      openWatched(source, longestEdge);
 
       this.durationMs = source.durationMs();
 
@@ -128,6 +223,50 @@ public final class FramePipeline {
       if (isCurrent(epoch)) {
         this.ring.clear();
         this.latestLiveFrame.set(null);
+      }
+    }
+  }
+
+  /**
+   * Open the source under a watchdog that names it in the log if it takes longer than
+   * {@link #SLOW_OPEN_MS}, and again when it comes back, so a stuck open and a merely slow one can
+   * be told apart from the log alone.
+   */
+  private void openWatched(FrameSource source, int longestEdge) throws Exception {
+    final String threadName = Thread.currentThread().getName();
+    final long startedNanos = System.nanoTime();
+
+    final ScheduledFuture<?> alarm = OPEN_WATCHDOG.schedule(() -> {
+      try {
+        LX.log(String.format(
+          "[LaserphileVideo] open of %s has not returned after %d s (thread '%s'). The first open "
+            + "of a session can take this long while FFmpeg's natives are extracted, and a line "
+            + "follows when it returns. If none does, the open is stuck inside the device (a "
+            + "camera or screen capture Chromatik has no permission for) or waiting on JavaCV's "
+            + "process-wide decoder lock, which a stuck open anywhere in Chromatik holds for as "
+            + "long as it is stuck. Restart Chromatik to clear it.",
+          source,
+          SLOW_OPEN_MS / 1000,
+          threadName));
+      } catch (Throwable ignored) {
+        // Logging must never take the watchdog thread down.
+      }
+    }, SLOW_OPEN_MS, TimeUnit.MILLISECONDS);
+
+    boolean opened = false;
+    try {
+      source.open(longestEdge);
+      opened = true;
+    } finally {
+      alarm.cancel(false);
+
+      final long tookMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
+      if (tookMs >= SLOW_OPEN_MS) {
+        LX.log(String.format(
+          "[LaserphileVideo] open of %s %s after %.1f s",
+          source,
+          opened ? "returned" : "failed",
+          tookMs / 1000.0));
       }
     }
   }
@@ -311,6 +450,8 @@ public final class FramePipeline {
    * returns null for as long as it runs rather than failing outright.
    */
   public VideoFrame frameFor(long streamTimeMs) {
+    startDeferredIfUnblocked();
+
     VideoFrame head;
 
     while ((head = this.ring.peek()) != null) {
@@ -345,6 +486,8 @@ public final class FramePipeline {
    * newest frame is the only one it holds and the only one worth showing.
    */
   public VideoFrame latestFrame() {
+    startDeferredIfUnblocked();
+
     return this.latestLiveFrame.get();
   }
 
@@ -382,12 +525,22 @@ public final class FramePipeline {
    *
    * The join is bounded because the thread can be somewhere that does not answer an interrupt: a
    * screen capture waiting on a first frame the OS will never send blocks inside FFmpeg with no way
-   * to break in. Rather than hold the engine up, the thread is left to its own devices; it is a
-   * daemon, so it cannot keep the app alive, and the epoch it captured at start stops it from
-   * touching anything once it does come back.
+   * to break in, and a file open queued behind it on JavaCV's process-wide lock is just as deaf.
+   * Rather than hold the engine up, the thread is left to its own devices; it is a daemon, so it
+   * cannot keep the app alive, and the epoch it captured at start stops it from touching anything
+   * once it does come back. It is remembered, though, so that {@link #start} does not pile another
+   * thread onto the same obstacle, and the log says once that it is stuck.
    */
   public void stop() {
     this.running = false;
+
+    if (this.deferredSource != null) {
+      // Never opened, so there is nothing to release, but a source may own other things.
+      this.deferredSource.close();
+      this.deferredSource = null;
+    }
+
+    forgetAbandonedThreadIfExited();
 
     if (this.thread != null) {
       this.thread.interrupt();
@@ -396,6 +549,20 @@ public final class FramePipeline {
         this.thread.join(TWO_SECONDS_IN_MS);
       } catch (InterruptedException interrupted) {
         Thread.currentThread().interrupt();
+      }
+
+      if (this.thread.isAlive()) {
+        LX.log(String.format(
+          "[LaserphileVideo] decode thread '%s' has not exited %d s after being stopped. It is "
+            + "blocked in native code or on a lock that an interrupt cannot break, most likely a "
+            + "capture device with no permission or JavaCV's process-wide decoder lock held by one. "
+            + "It has been abandoned; no new decode starts on this pipeline until it exits, and "
+            + "only a restart of Chromatik is certain to clear it.",
+          this.thread.getName(),
+          TWO_SECONDS_IN_MS / 1000));
+
+        // At most one thread is ever abandoned, because start() refuses to run while one lives.
+        this.abandonedThread = this.thread;
       }
 
       this.thread = null;

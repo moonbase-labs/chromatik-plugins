@@ -82,7 +82,12 @@ final class RawWebcamSource implements FrameSource {
         attempt.describe()));
 
       try {
-        opening.start();
+        // startUnsafe, not start: see BoundedOpen for why the process-wide lock must not be held.
+        BoundedOpen.start(
+          opening,
+          opening::startUnsafe,
+          format + " " + attempt.describe(),
+          "[LaserphileTouchCamera]");
         WorkingResolution.applyTo(opening, longestEdge);
 
         this.correction = ColorSpaceCorrection.forStream(opening, toString());
@@ -94,20 +99,14 @@ final class RawWebcamSource implements FrameSource {
           "[LaserphileTouchCamera] webcam open failed (%s): %s",
           attempt.describe(),
           failure));
+        // Not released here: BoundedOpen has already released it, or an opener thread is still
+        // inside its start and release() would wait on that thread holding the decoder lock.
         lastFailure = failure;
-        try {
-          opening.release();
-        } catch (Exception ignored) {
-        }
       }
     }
 
     if (this.grabber == null) {
-      throw new IllegalStateException(
-        "Unable to open webcam on Windows DirectShow. Try Refresh, then selecting CamList again. "
-          + "If it still fails, close other apps using the camera and check Windows camera privacy "
-          + "permissions for Chromatik.",
-        lastFailure);
+      throw new IllegalStateException(openFailureAdvice(device), lastFailure);
     }
 
     LX.log(String.format(
@@ -126,7 +125,11 @@ final class RawWebcamSource implements FrameSource {
       this.cameraIndex));
 
     try {
-      opening.start();
+      BoundedOpen.start(
+        opening,
+        opening::start,
+        "videoinput index=" + this.cameraIndex,
+        "[LaserphileTouchCamera]");
       WorkingResolution.applyTo(opening, longestEdge);
 
       this.correction = ColorSpaceCorrection.NONE;
@@ -136,11 +139,7 @@ final class RawWebcamSource implements FrameSource {
         "[LaserphileTouchCamera] webcam open failed (videoinput index=%d): %s",
         this.cameraIndex,
         failure));
-      try {
-        opening.release();
-      } catch (Exception ignored) {
-      }
-      throw failure;
+      throw failure; // BoundedOpen has released the grabber, or still owns it
     }
 
     LX.log(String.format(
@@ -298,6 +297,19 @@ final class RawWebcamSource implements FrameSource {
     String describe() {
       return this.input;
     }
+  }
+
+  private static String openFailureAdvice(CaptureDevice device) {
+    return switch (device) {
+      case AVFOUNDATION -> "Unable to open webcam via avfoundation. Check that Chromatik has Camera "
+        + "permission (System Settings > Privacy & Security > Camera) and restart it after granting, "
+        + "close other apps using the camera, and check the Camera index.";
+      case DSHOW -> "Unable to open webcam on Windows DirectShow. Try Refresh, then selecting CamList "
+        + "again. If it still fails, close other apps using the camera and check Windows camera "
+        + "privacy permissions for Chromatik.";
+      case V4L2 -> "Unable to open webcam via v4l2. Check that /dev/video<Camera> exists, that the "
+        + "user running Chromatik is in the video group, and that no other app holds the device.";
+    };
   }
 
   private static String formatFor(CaptureDevice device) {

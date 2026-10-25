@@ -22,7 +22,7 @@ This plan implements a Java-first live webcam pattern in Chromatik that preserve
 2. Phase 2: Robustness and UX
 - Add camera input presets and better validation per OS backend.
 - Add smoothing/debounce for blob IDs and segment values.
-- Improve diagnostics for permission/device-open failures.
+- Improve diagnostics for permission/device-open failures. (Done 2026-10-25: a webcam open is bounded to 15 s by `BoundedOpen`, abandoned with a log line naming Camera permission, and no longer holds JavaCV's process-wide decoder lock.)
 
 3. Phase 3: Touch semantics
 - Add segment-level aggregation outputs tuned for your control workflow.
