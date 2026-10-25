@@ -6,7 +6,7 @@ This repo publishes from tags only. A release appears on GitHub when a semver ta
 
 Recommended next tag: `v0.2.1`.
 
-Why: current unreleased changes are patch-level behavior and UX updates in `chromatik-touch` (camera orientation controls, more resilient Windows camera enumeration, and a stable preview port preference with fallback) without a package-surface break. That is a PATCH bump under the semver policy in the README.
+Why: current unreleased changes are patch-level behavior and UX updates in `chromatik-touch` (camera orientation controls, more resilient Windows camera enumeration, and a stable preview port preference with fallback) without a package-surface break. That is a PATCH bump under the versioning policy below.
 
 ## Preflight checklist
 
@@ -53,3 +53,19 @@ CI will:
 1. Open the GitHub release and verify expected assets are present.
 2. Open the rendered release notes and verify package names match assets.
 3. Confirm README "latest release" link now resolves to the new tag.
+
+## Versioning
+
+Versions are [semver](https://semver.org/): `vMAJOR.MINOR.PATCH`, optionally with a `-prerelease` suffix. A tag that isn't fails the build before anything is published, and a `-prerelease` tag (`v0.2.1-rc.1`) is marked as such on GitHub so it stays out of "latest release". Build metadata (`+`) is rejected: semver ignores it for precedence and it mangles download URLs.
+
+The tag is the only place a release version lives. The pom stays on `-SNAPSHOT` naming the release it's heading for, and CI overwrites it at build time so the jar reports a real version through `lx.package`.
+
+What counts as breaking, for a Chromatik package, is compatibility with saved `.lxp` projects, since those store the pattern's class name and its parameter paths:
+
+| | Means |
+|---|---|
+| **MAJOR** | A saved project won't reload cleanly: a parameter renamed or removed, the pattern class renamed, or `mediaDir` changed. |
+| **MINOR** | New parameters, new patterns, a newly supported platform. Existing projects unaffected. |
+| **PATCH** | Fixes and performance work with no change to the parameter surface. |
+
+While MAJOR is `0` this is pre-1.0, so a MINOR bump is allowed to break things. Reaching 1.0 is the promise not to.
