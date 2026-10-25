@@ -129,9 +129,10 @@ const float GAIN = 3.0;
 // Floor on how much one dive step shrinks the view.
 //
 // The step size is the fractal's own, not a choice, and it runs all the way down to zero: it is
-// smallest where c sits at the cusp of the cardioid, and c walks over that cusp once a lap. Right
-// there the set repeats itself only under a scaling by one, which is to say it does not repeat, and
-// there is no step to take. The floor stops the divide below it from running away.
+// smallest where c sits at the cusp of the cardioid. Right there the set repeats itself only under
+// a scaling by one, which is to say it does not repeat, and there is no step to take. The walk
+// turns back short of the cusp, so this is a guard for the divides below rather than something met
+// every lap.
 const float SLOWEST_DIVE_STEP = 0.05;
 
 // How fast the dive falls, in e-foldings of scale per second at dive fully up.
@@ -148,11 +149,23 @@ const float SLOWEST_DIVE_STEP = 0.05;
 // nobody can see one of those.
 const float DIVE_RATE = 0.7;
 
-// How fast c walks round the cardioid, in radians per second.
+// How fast c walks the cardioid, in radians per second of the swing described at phiAt.
 const float WALK_RATE = 0.13;
 
-// How many slices one lap of the walk is cut into when the dive is summed along it. The step size
-// is smooth apart from the floor it hits at the cusp, so this many is plenty.
+// How far short of the cusp the walk turns back, in radians of the cardioid's parameter.
+//
+// The walk does not go round the cardioid but back and forth along it, and it stays this far from
+// the cusp at either end, for two reasons. The fixed point the frame is centred on sits at
+// (1 + sqrt(1 - 4c)) / 2, and near the cusp 1 - 4c passes close to zero, so the square root, and
+// with it the fixed point and the whole frame, swings round at a speed that climbs without limit
+// the closer c comes: a rush of panning once a lap that reads as a jump. And with morph above 1
+// the square root's branch cut is crossed right at the cusp, which snaps the frame to the other
+// fixed point outright. This far out the step size is still a third of an e-folding and the fixed
+// point moves at a pace the eye can follow.
+const float CUSP_MARGIN = 0.7;
+
+// How many slices one swing of the walk is cut into when the dive is summed along it. The step size
+// is smooth over the swing, so this many is plenty.
 const int DIVE_SLICES = 48;
 
 vec2 rotate(vec2 point, float rads) {
@@ -329,24 +342,33 @@ float stepLogAt(float phi) {
   return max(log(length(2.0 * fixedPoint)), SLOWEST_DIVE_STEP);
 }
 
-// How many steps a dive at one e-folding per radian of the walk has taken by phi: the integral of
-// 1 / stepLog over the walk so far. The walk repeats every lap, so whole laps are one sum reused
-// and only the lap in progress is summed as far as it has got, which keeps the cost the same at any
-// time. Trapezoids over the lap, with the last slice cut off where the walk currently is.
-float diveDistance(float phi) {
-  float laps = floor(phi / TAU);
-  float within = phi - (laps * TAU);
-  float width = TAU / float(DIVE_SLICES);
-  float fullLap = 0.0;
+// Where along the cardioid c is at a given time: a cosine swing between CUSP_MARGIN and
+// TAU - CUSP_MARGIN, so the walk slows to a stop and turns back at each end instead of crossing
+// the cusp. One swing there and back takes TAU / WALK_RATE seconds.
+float phiAt(float seconds) {
+  return (0.5 * TAU) + (((0.5 * TAU) - CUSP_MARGIN) * cos(WALK_RATE * seconds));
+}
+
+// How many steps a dive at one e-folding per second has taken by a given time: the integral of
+// 1 / stepLog over the walk so far. The walk repeats every swing, so whole swings are one sum
+// reused and only the swing in progress is summed as far as it has got, which keeps the cost the
+// same at any time. Trapezoids over the swing, with the last slice cut off where the walk currently
+// is.
+float diveDistance(float seconds) {
+  float swing = TAU / WALK_RATE;
+  float swings = floor(seconds / swing);
+  float within = seconds - (swings * swing);
+  float width = swing / float(DIVE_SLICES);
+  float fullSwing = 0.0;
   float partial = 0.0;
-  float previous = 1.0 / stepLogAt(0.0);
+  float previous = 1.0 / stepLogAt(phiAt(0.0));
 
   for (int index = 0; index < DIVE_SLICES; index++) {
     float from = float(index) * width;
-    float current = 1.0 / stepLogAt(from + width);
+    float current = 1.0 / stepLogAt(phiAt(from + width));
     float slice = 0.5 * (previous + current) * width;
 
-    fullLap += slice;
+    fullSwing += slice;
 
     if (from + width <= within) {
       partial += slice;
@@ -357,7 +379,7 @@ float diveDistance(float phi) {
     previous = current;
   }
 
-  return (laps * fullLap) + partial;
+  return (swings * fullSwing) + partial;
 }
 
 void main(void) {
@@ -382,7 +404,7 @@ void main(void) {
   // ones are. morph then scales that point towards or away from the origin, so it crosses the edge:
   // below 1 c is inside and the set is connected and filled, above 1 it is outside and the set
   // breaks into dust. The whole knob is the one transition worth having.
-  float phi = time * WALK_RATE;
+  float phi = phiAt(time);
   vec2 c = cAt(phi);
 
   // Where the dive is aimed, and why it can go on forever.
@@ -433,11 +455,15 @@ void main(void) {
   // the dive eases off as the frame widens. Pulling back gives the whole set held steady, pushing in
   // gives a dive that never ends, and there is no setting in between where it pumps. A wide frame is
   // not left still either, since morph is walking c the whole time.
-  float phase = fract(dive * settled * DIVE_RATE * diveDistance(phi) / WALK_RATE);
+  float phase = fract(dive * settled * DIVE_RATE * diveDistance(time));
 
-  // Two layers one step apart, dissolving into each other. Self-similarity makes them the same
-  // picture, so the far layer arrives already matching the near one as it fades in, and at the
-  // moment the phase wraps the pair has swapped places with nothing to see.
+  // Two layers one step apart, dissolving into each other. The far layer is shown in full at the
+  // start of a step and the near layer at the end, and the near layer's end is exactly the far
+  // layer's start: the same region at the same scale. So the wrap changes nothing, whether or not
+  // the set repeats itself there. Where it does, near the fixed point, the dissolve is between two
+  // copies of one picture and the dive reads as endless; elsewhere it reads as a zoom that keeps
+  // dissolving back to where it began, a breath rather than a snap. Shown the other way round, the
+  // wrap would compare pictures two steps apart and snap wherever the set failed to repeat.
   //
   // Note that pan and centre are inside this, not applied after it. Both layers are then the same
   // region under one step of the same scaling, which is the condition for them to match; shifting
@@ -470,7 +496,7 @@ void main(void) {
   vec3 color = mix(
       juliaLayer(near, c, trapPoint, trapRadius, limit, tint, focus / nearHalfWidth),
       juliaLayer(far, c, trapPoint, trapRadius, limit, tint, focus / farHalfWidth),
-      phase);
+      1.0 - phase);
 
   // Filaments crossing each other add up, and two bright ones overlapping is already past 1. Rolling
   // the highlights off rather than clipping them keeps a crossing readable as a brighter thread
