@@ -45,6 +45,12 @@ uniform float rings;  // @range(0, 1) @default(0.35)
 uniform float focus;  // @range(4, 120) @default(22)
 uniform float depth;  // @range(12, 160) @default(48)
 
+// A floor under the brightness. Inside the set and far outside it the picture is flat and, left to
+// itself, nearly black, which on a rig is a panel that looks switched off whenever the frame puts
+// one there. The floor keeps those regions lit in their own hue; the filaments stay well above it.
+// 0 is the original look.
+uniform float ambient;  // @range(0, 1) @default(0.4)
+
 const float TAU = 6.28318530718;
 
 // Loops need a bound the compiler can see, so the real iteration count is a break inside a loop
@@ -295,6 +301,8 @@ vec3 juliaLayer(vec2 start, vec2 c, vec2 trapPoint, float trapRadius, int limit,
 
     glow = exp(-distanceInFrames) + (HALO_LEVEL * exp(-distanceInFrames * HALO_WIDTH));
   }
+
+  glow = max(glow, ambient);
 
   // Hue comes off the orbit's tour rather than off its distance from the set, so that colour varies
   // along a filament that brightness holds at a constant width.
