@@ -85,6 +85,18 @@ Drop each `.jar` into your Chromatik packages folder and restart the app. Chroma
 </details>
 
 <details>
+<summary><b>Keeping your videos somewhere else</b></summary>
+
+Video looks in `~/Chromatik/LaserphileVideo`, and saves anything in there as a relative path, so projects keep working on other machines. To keep clips somewhere else, such as a synced drive or a repo, move them there, delete the `LaserphileVideo` folder, and link your folder in its place:
+
+- **Mac or Linux:** `ln -s /path/to/your/videos ~/Chromatik/LaserphileVideo`
+- **Windows** (Command Prompt): `mklink /J "%USERPROFILE%\Chromatik\LaserphileVideo" "C:\path\to\your\videos"`
+
+Browse still saves relative paths through the link. Shaders work the same way with `LaserphileShader`.
+
+</details>
+
+<details>
 <summary><b>A pattern lists itself, then refuses to load</b></summary>
 
 Chromatik has no way to say one package needs another, so a pattern installed without Core lists itself and then refuses to load, saying which package is missing. Install Core and restart.
