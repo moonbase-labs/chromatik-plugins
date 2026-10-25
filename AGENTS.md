@@ -20,6 +20,7 @@ Notes for coding agents. The README is written for people installing and using t
 mvn package                                     # core and every plugin; macOS jars by default
 mvn -pl :chromatik-video -am package            # one plugin and the core it needs (-am is required)
 mvn -Pinstall install                           # build, then copy into ~/Chromatik/Packages
+java scripts/LinkPackages.java                  # or link the built jars into ~/Chromatik/Packages
 
 java -cp packages/chromatik-core/target/chromatik-core-*-macos.jar \
      ci/NativeLoadCheck.java \

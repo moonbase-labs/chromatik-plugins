@@ -133,7 +133,14 @@ cd chromatik-plugins
 mvn -Pinstall install    # build everything and copy it into ~/Chromatik/Packages
 ```
 
-Platform builds, the release gate and the gotchas are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Working on the code? Link the jars instead, so every rebuild reaches Chromatik:
+
+```bash
+mvn package                       # on Windows: mvn package -Pdist-windows
+java scripts/LinkPackages.java    # links each built jar into ~/Chromatik/Packages
+```
+
+Windows needs Developer Mode for the links. Platform builds, the release gate and the gotchas are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## 📚 Docs
 

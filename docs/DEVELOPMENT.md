@@ -91,6 +91,20 @@ mvn -Pinstall install -pl :chromatik-video -am  # build and install both
 
 Chromatik reloads a rebuilt package from the **CONTENT** tab: **Reload Package Content**, or leave **Auto-Reload Packages** on.
 
+### Link instead of copying
+
+```bash
+mvn package                           # on Windows: mvn package -Pdist-windows
+java scripts/LinkPackages.java        # or pass the path to another Chromatik folder
+```
+
+Run it from the repo root. Each module's jar for this platform is linked into `~/Chromatik/Packages` as `<module>.jar`, so every later `mvn package` reaches Chromatik without a copy. Run it again after a version bump.
+
+- Any other jar of the same module already in `Packages` (a release download, or one copied by `-Pinstall`) is renamed to `<name>.bak.<date-time>`, so Chromatik doesn't load two copies.
+- A plain `mvn package` builds the macOS Core and Shader jars on any machine. The script says so if those are all it finds.
+- Windows only creates symbolic links with **Developer Mode** on (Settings → System → For developers). Without it the script copies the jars instead, so you'd rerun it after each build.
+- Windows won't let Maven overwrite a jar that Chromatik has open, so close Chromatik before rebuilding there.
+
 Adding a plugin is four files and one line in the root pom: [`docs/ADDING-A-PLUGIN.md`](ADDING-A-PLUGIN.md).
 
 ## Gotchas
