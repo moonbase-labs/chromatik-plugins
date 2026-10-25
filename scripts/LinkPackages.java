@@ -1,5 +1,6 @@
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
@@ -68,6 +69,8 @@ public class LinkPackages {
       }
     }
 
+    linkShaders(chromatik, modules.resolve("chromatik-shader").resolve("shaders"));
+
     if (!unbuilt.isEmpty()) {
       System.out.printf("not built %s. Run %s first.%n", String.join(", ", unbuilt), buildCommand);
     }
@@ -128,6 +131,68 @@ public class LinkPackages {
     } catch (IOException failure) {
       System.err.printf("failed    %s: %s%n", moduleName, failure);
       problems++;
+    }
+  }
+
+  /**
+   * Point ~/Chromatik/LaserphileShader at the repo's shader folder, so the Shader pattern's menu
+   * lists every shader in the repo and a git pull is all it takes to get a new one. A folder
+   * already there is kept as a backup, since it may hold shaders of the user's own.
+   */
+  private static void linkShaders(Path chromatik, Path shaders) {
+    final Path link = chromatik.resolve("LaserphileShader");
+    final Path source = shaders.toAbsolutePath().normalize();
+
+    if (!Files.isDirectory(source)) {
+      System.out.printf("skipped   LaserphileShader: no folder at %s%n", source);
+      return;
+    }
+
+    try {
+      if (Files.isDirectory(link) && link.toRealPath().equals(source.toRealPath())) {
+        System.out.printf("ok        LaserphileShader -> %s%n", source);
+        linked++;
+        return;
+      }
+
+      if (Files.isSymbolicLink(link)) {
+        Files.delete(link);
+        System.out.println("removed   LaserphileShader, an old link");
+      } else if (Files.exists(link)) {
+        final Path backup = link.resolveSibling("LaserphileShader.bak." + STAMP);
+
+        Files.move(link, backup);
+        System.out.printf("moved     LaserphileShader to %s. Move any shaders of your own from there into %s%n",
+          backup.getFileName(), source);
+      }
+
+      try {
+        Files.createSymbolicLink(link, source);
+      } catch (FileSystemException refused) {
+        if (!currentPlatform().equals("windows")) {
+          throw refused;
+        }
+
+        junction(link, source);
+      }
+
+      System.out.printf("linked    LaserphileShader -> %s%n", source);
+      linked++;
+    } catch (IOException | InterruptedException failure) {
+      System.err.printf("failed    LaserphileShader: %s%n", failure);
+      problems++;
+    }
+  }
+
+  /** A directory junction needs no Developer Mode, unlike a symbolic link on Windows. */
+  private static void junction(Path link, Path target) throws IOException, InterruptedException {
+    final Process mklink = new ProcessBuilder("cmd", "/c", "mklink", "/J", link.toString(), target.toString())
+      .redirectErrorStream(true)
+      .start();
+    final String output = new String(mklink.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+
+    if (mklink.waitFor() != 0) {
+      throw new IOException(output.strip());
     }
   }
 

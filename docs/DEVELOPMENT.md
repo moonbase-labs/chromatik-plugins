@@ -98,11 +98,11 @@ mvn package                           # on Windows: mvn package -Pdist-windows
 java scripts/LinkPackages.java        # or pass the path to another Chromatik folder
 ```
 
-Run it from the repo root. Each module's jar for this platform is linked into `~/Chromatik/Packages` as `<module>.jar`, so every later `mvn package` reaches Chromatik without a copy. Run it again after a version bump.
+Run it from the repo root. Each module's jar for this platform is linked into `~/Chromatik/Packages` as `<module>.jar`, so every later `mvn package` reaches Chromatik without a copy. Run it again after a version bump. It also links `~/Chromatik/LaserphileShader` to `packages/chromatik-shader/shaders/`, so the Shader pattern's menu lists the repo's shaders and a `git pull` is enough to get a new one.
 
-- Any other jar of the same module already in `Packages` (a release download, or one copied by `-Pinstall`) is renamed to `<name>.bak.<date-time>`, so Chromatik doesn't load two copies.
+- Any other jar of the same module already in `Packages` (a release download, or one copied by `-Pinstall`) is renamed to `<name>.bak.<date-time>`, so Chromatik doesn't load two copies. An existing `LaserphileShader` folder is renamed the same way; move any shaders of your own from it into the repo folder.
 - A plain `mvn package` builds the macOS Core and Shader jars on any machine. The script says so if those are all it finds.
-- Windows only creates symbolic links with **Developer Mode** on (Settings → System → For developers). Without it the script copies the jars instead, so you'd rerun it after each build.
+- Windows only creates symbolic links with **Developer Mode** on (Settings → System → For developers). Without it the script copies the jars instead, so you'd rerun it after each build. The shader folder becomes a directory junction, which needs no Developer Mode.
 - Windows won't let Maven overwrite a jar that Chromatik has open, so close Chromatik before rebuilding there.
 
 Adding a plugin is four files and one line in the root pom: [`docs/ADDING-A-PLUGIN.md`](ADDING-A-PLUGIN.md).

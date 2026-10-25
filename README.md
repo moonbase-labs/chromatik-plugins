@@ -117,7 +117,7 @@ On Linux this needs an X11 session; Wayland has no X screen for FFmpeg to captur
 ### 🎬 Try it without building a model
 
 - **Video:** download [`demo.lxp`](packages/chromatik-video/projects/demo.lxp) and [`demo-bars.mp4`](packages/chromatik-video/projects/demo-bars.mp4), put the clip in `~/Chromatik/LaserphileVideo/`, then open the project. It's a 30x30 grid playing colour bars, a grey ramp and a sweeping block, so the playhead, looping and speed are easy to read.
-- **Shader:** copy the six shaders in [`packages/chromatik-shader/shaders/`](packages/chromatik-shader/shaders) into `~/Chromatik/LaserphileShader/`, then open [`demo.lxp`](packages/chromatik-shader/projects/demo.lxp). The pattern's **Shader** menu lists that folder, and **Browse** opens there for files kept elsewhere.
+- **Shader:** copy the shaders in [`packages/chromatik-shader/shaders/`](packages/chromatik-shader/shaders) into `~/Chromatik/LaserphileShader/` (or run `java scripts/LinkPackages.java`, which links the folder), then open [`demo.lxp`](packages/chromatik-shader/projects/demo.lxp). The pattern's **Shader** menu lists that folder, and **Browse** opens there for files kept elsewhere.
 
 Both grids are 900 points, under the 1,000 that Chromatik's FREE licence will send to real fixtures.
 
@@ -149,7 +149,7 @@ Working on the code? Link the jars instead, so every rebuild reaches Chromatik:
 
 ```bash
 mvn package                       # on Windows: mvn package -Pdist-windows
-java scripts/LinkPackages.java    # links each built jar into ~/Chromatik/Packages
+java scripts/LinkPackages.java    # links each built jar into ~/Chromatik/Packages, and the shaders folder as ~/Chromatik/LaserphileShader
 ```
 
 Windows needs Developer Mode for the links. Platform builds, the release gate and the gotchas are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
