@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import com.google.gson.JsonElement;
@@ -203,6 +204,13 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
    */
   private volatile List<UniformControl> uniformControls = List.of();
 
+  /**
+   * Which file the standing controls were built for. A knob whose name carries over keeps its
+   * position when the same file is saved again, so an edit costs nothing, but a different file
+   * starts at its author's defaults, or picking a new shader would inherit the last one's colours.
+   */
+  private String builtForFile = null;
+
   /** Held so the engine can push the clock at it and read compile results back. */
   private ShaderSource source = null;
 
@@ -327,7 +335,12 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
    * belonged to a uniform that no longer exists.
    */
   private void rebuildUniformControls(List<UniformDeclaration> declarations) {
-    if (alreadyBuiltFor(declarations)) {
+    final String currentFile = this.fileName.getString();
+    final boolean switchedFile = !Objects.equals(currentFile, this.builtForFile);
+
+    this.builtForFile = currentFile;
+
+    if (!switchedFile && alreadyBuiltFor(declarations)) {
       return;
     }
 
@@ -357,6 +370,10 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
 
       if (carryover != null && sameControlKind(carryover.declaration(), declaration)) {
         // Same knob, possibly with a widened range — updating the declaration is enough.
+        if (switchedFile) {
+          resetToDefault(carryover.parameter(), declaration);
+        }
+
         rebuilt.add(new UniformControl(declaration, carryover.parameter()));
       } else {
         final UniformControl fresh =
@@ -406,6 +423,15 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
    */
   private static boolean sameControlKind(UniformDeclaration left, UniformDeclaration right) {
     return left.type().equals("bool") == right.type().equals("bool");
+  }
+
+  private static void resetToDefault(LXListenableNormalizedParameter parameter,
+      UniformDeclaration declaration) {
+    if (parameter instanceof BooleanParameter switched) {
+      switched.setValue(declaration.defaultValue() >= 0.5);
+    } else {
+      parameter.setNormalized(declaration.defaultPosition());
+    }
   }
 
   /**
