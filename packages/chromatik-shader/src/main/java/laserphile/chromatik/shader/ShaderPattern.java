@@ -3,6 +3,7 @@ package laserphile.chromatik.shader;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -549,9 +551,10 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
   }
 
   /**
-   * Store a path under ~/Chromatik as a relative one, so a project shared with someone else
-   * still finds the shader next to their own Chromatik folder. Anything outside stays absolute,
-   * because there is nothing portable to say about it.
+   * Store a path under ~/Chromatik as a relative one, including one reached through a folder
+   * linked into it, so a project shared with someone else still finds the shader next to their
+   * own Chromatik folder. Anything outside stays absolute, because there is nothing portable to
+   * say about it.
    */
   private String relativizeToMediaFolder(String chosenPath) {
     final String mediaPath = this.lx.getMediaPath();
@@ -563,11 +566,47 @@ public class ShaderPattern extends LXPattern implements UIDeviceControls<ShaderP
     final Path mediaFolder = Paths.get(mediaPath).toAbsolutePath().normalize();
     final Path chosen = Paths.get(chosenPath).toAbsolutePath().normalize();
 
-    if (!chosen.startsWith(mediaFolder)) {
-      return chosenPath;
+    if (chosen.startsWith(mediaFolder)) {
+      return portable(mediaFolder.relativize(chosen));
     }
 
-    return mediaFolder.relativize(chosen).toString();
+    return relativizeThroughLinks(mediaFolder, chosen).orElse(chosenPath);
+  }
+
+  private static String portable(Path relativePath) {
+    return relativePath.toString().replace(File.separatorChar, '/');
+  }
+
+  private static Optional<String> relativizeThroughLinks(Path mediaFolder, Path chosen) {
+    try {
+      final Path chosenReal = chosen.toRealPath();
+      final List<Path> folders = new ArrayList<>(List.of(mediaFolder));
+
+      try (DirectoryStream<Path> children = Files.newDirectoryStream(mediaFolder, entry -> Files.isDirectory(entry))) {
+        children.forEach(folders::add);
+      }
+
+      Path matchedFolder = null;
+      Path matchedReal = null;
+
+      for (Path folder : folders) {
+        final Path folderReal = folder.toRealPath();
+        final boolean closer = matchedReal == null || folderReal.getNameCount() > matchedReal.getNameCount();
+
+        if (chosenReal.startsWith(folderReal) && closer) {
+          matchedFolder = folder;
+          matchedReal = folderReal;
+        }
+      }
+
+      if (matchedFolder == null) {
+        return Optional.empty();
+      }
+
+      return Optional.of(portable(mediaFolder.relativize(matchedFolder.resolve(matchedReal.relativize(chosenReal)))));
+    } catch (IOException | SecurityException unreadable) {
+      return Optional.empty();
+    }
   }
 
   /** Absolute paths are used as-is; relative paths resolve under ~/Chromatik for portability. */
