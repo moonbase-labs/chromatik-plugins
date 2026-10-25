@@ -133,11 +133,21 @@ const float SLOWEST_DIVE_STEP = 0.05;
 // The dive is counted in these rather than in steps of the fractal's own, and the difference matters
 // because the step size varies by a factor of twenty over one lap of c. Counting steps would hand
 // the knob a different speed at every moment, crawling near the cusp and racing on the far side,
-// with nothing on screen to explain either. Dividing the step size back out below leaves the frame
-// closing at the speed the knob asks for wherever c happens to be. What changes instead is how often
-// the phase wraps, which is the harmless end of the trade: a small step means a wrap between two
-// layers that are nearly the same size, and nobody can see one of those.
+// with nothing on screen to explain either. Converting back into steps has to be done by summing
+// the dive over the walk of c, in diveDistance below, not by dividing the elapsed time by the step
+// size of the moment: that quotient moves with the step size as well as with time, by an amount
+// that grows with the time elapsed, so the dive sped up without limit and ran backwards in between.
+// What changes with the step size instead is how often the phase wraps, which is the harmless end
+// of the trade: a small step means a wrap between two layers that are nearly the same size, and
+// nobody can see one of those.
 const float DIVE_RATE = 0.7;
+
+// How fast c walks round the cardioid, in radians per second.
+const float WALK_RATE = 0.13;
+
+// How many slices one lap of the walk is cut into when the dive is summed along it. The step size
+// is smooth apart from the floor it hits at the cusp, so this many is plenty.
+const int DIVE_SLICES = 48;
 
 vec2 rotate(vec2 point, float rads) {
   float cs = cos(rads);
@@ -297,6 +307,51 @@ vec3 juliaLayer(vec2 start, vec2 c, vec2 trapPoint, float trapRadius, int limit,
   return palette(tone) * glow * GAIN;
 }
 
+// Where c is after walking phi radians round the cardioid. See main for why the cardioid.
+vec2 cAt(float phi) {
+  vec2 cardioid =
+    (0.5 * vec2(cos(phi), sin(phi))) - (0.25 * vec2(cos(2.0 * phi), sin(2.0 * phi)));
+  return morph * cardioid;
+}
+
+// How much one self-similar step shrinks the view, in e-foldings, for the set at phi. See main for
+// where the step comes from.
+float stepLogAt(float phi) {
+  vec2 fixedPoint = 0.5 * (vec2(1.0, 0.0) + complexSqrt(vec2(1.0, 0.0) - (4.0 * cAt(phi))));
+  return max(log(length(2.0 * fixedPoint)), SLOWEST_DIVE_STEP);
+}
+
+// How many steps a dive at one e-folding per radian of the walk has taken by phi: the integral of
+// 1 / stepLog over the walk so far. The walk repeats every lap, so whole laps are one sum reused
+// and only the lap in progress is summed as far as it has got, which keeps the cost the same at any
+// time. Trapezoids over the lap, with the last slice cut off where the walk currently is.
+float diveDistance(float phi) {
+  float laps = floor(phi / TAU);
+  float within = phi - (laps * TAU);
+  float width = TAU / float(DIVE_SLICES);
+  float fullLap = 0.0;
+  float partial = 0.0;
+  float previous = 1.0 / stepLogAt(0.0);
+
+  for (int index = 0; index < DIVE_SLICES; index++) {
+    float from = float(index) * width;
+    float current = 1.0 / stepLogAt(from + width);
+    float slice = 0.5 * (previous + current) * width;
+
+    fullLap += slice;
+
+    if (from + width <= within) {
+      partial += slice;
+    } else if (from < within) {
+      partial += slice * (within - from) / width;
+    }
+
+    previous = current;
+  }
+
+  return (laps * fullLap) + partial;
+}
+
 void main(void) {
   // Divided by the shorter edge rather than by each axis, so the set stays round on a frame that is
   // not square instead of being stretched to fit it.
@@ -319,10 +374,8 @@ void main(void) {
   // ones are. morph then scales that point towards or away from the origin, so it crosses the edge:
   // below 1 c is inside and the set is connected and filled, above 1 it is outside and the set
   // breaks into dust. The whole knob is the one transition worth having.
-  float phi = time * 0.13;
-  vec2 cardioid =
-    (0.5 * vec2(cos(phi), sin(phi))) - (0.25 * vec2(cos(2.0 * phi), sin(2.0 * phi)));
-  vec2 c = morph * cardioid;
+  float phi = time * WALK_RATE;
+  vec2 c = cAt(phi);
 
   // Where the dive is aimed, and why it can go on forever.
   //
@@ -372,7 +425,7 @@ void main(void) {
   // the dive eases off as the frame widens. Pulling back gives the whole set held steady, pushing in
   // gives a dive that never ends, and there is no setting in between where it pumps. A wide frame is
   // not left still either, since morph is walking c the whole time.
-  float phase = fract((time * dive * settled * DIVE_RATE) / stepLog);
+  float phase = fract(dive * settled * DIVE_RATE * diveDistance(phi) / WALK_RATE);
 
   // Two layers one step apart, dissolving into each other. Self-similarity makes them the same
   // picture, so the far layer arrives already matching the near one as it fades in, and at the
