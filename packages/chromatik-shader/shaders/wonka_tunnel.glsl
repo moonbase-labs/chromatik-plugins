@@ -3,9 +3,9 @@
 // The boat ride, through a tunnel tiled like a turtle's shell dyed blue. Seen from the bow, the
 // walls are irregular scutes in light and dark blue, every scute darker toward its rim with
 // faint growth rings inside, lit by whirling lamps, the whole tunnel lurching and wobbling as it
-// goes. A single scute is lit at any moment: it flares, dims, and skips to another scute on
-// every beat of the hop knob, always somewhere round the wall at about the same depth into the
-// tunnel, a little nearer or further each time. The far end is black. Nothing in it ever
+// goes. On every beat of the hop knob one scute turns gold, somewhere round the wall and always
+// deeper into the tunnel than the one still fading, and decays slowly back to its own blue. The
+// hops keep pace with the wall, so the light never closes on the centre and never starts over. The far end is black. Nothing in it ever
 // reaches white: where lights pile up the colour is scaled down rather than clipped, so it stays
 // dyed. Speed below zero runs the ride backwards.
 //
@@ -128,23 +128,36 @@ void main(void) {
   float lit = smoothstep(0.25, 0.85, valueNoise(vec2(wall * 3.0 + time * 0.15, depth * 0.35 - time * 0.3)));
   vec3 bands = hsv2rgb(scute) * grout * rimShade * rings * (0.25 + 0.75 * lit);
 
-  // The skipping light. Each beat picks one scute: a random position round the wall, at a depth
-  // that stays about a third of the way down the tunnel, nudged nearer or further at random. The
-  // pick is made from the travel at the start of the beat, so the scute holds while it is lit and
-  // rides toward the viewer with everything else.
+  // The skipping light. Each beat picks one scute: a random position round the wall, at a fixed
+  // apparent depth. Because the wall carries every scute outward as the boat moves, the scute
+  // lit last beat has ridden toward the bow by the time the next is picked, so each hop lands
+  // deeper than where the previous one now sits: the light keeps hopping inward relative to the
+  // pattern, yet never gets any nearer the centre and never has to start over. The pick is made
+  // from the travel at the start of the beat, so the scute holds while it is lit and rides toward
+  // the viewer with everything else. The scute goes gold the moment it is picked
+  // and decays slowly back to its own colour, slowly enough that the one before is still fading
+  // when the next lights up.
   float hopRate = max(hop, 0.0001);
   float beatIndex = floor(time * hopRate);
   float beatPhase = fract(time * hopRate);
-  float travelAtBeat = (beatIndex / hopRate) * speed * 1.5;
-  const float HOLD_DEPTH = 3.0;
-  float aheadDepth = HOLD_DEPTH + (hash(beatIndex * 5.1 + 3.0) - 0.5) * 1.6;
-  vec2 targetId = vec2(
-    floor(hash(beatIndex * 3.7 + 11.0) * AROUND),
-    floor((aheadDepth + travelAtBeat) * 1.2));
-  float onTarget = step(0.5, 1.0 - abs(nearestId.x - targetId.x)) * step(0.5, 1.0 - abs(nearestId.y - targetId.y));
-  float flare = exp(-beatPhase * 2.0);
-  float skipLight = onTarget * flare * step(0.01, hop);
-  vec3 litScute = hsv2rgb(vec3(scute.x, scute.y * 0.7, 1.0)) * grout * (0.7 + 0.3 * rings);
+  const float HOLD_DEPTH = 4.0;   // where every hop lands, in apparent depth from the bow
+  const float GOLD_DECAY = 1.2;   // per beat; about a third is left when the next beat lands
+
+  float gold = 0.0;
+  for (int back = 0; back < 2; back++) {
+    float beat = beatIndex - float(back);
+    float travelAtBeat = (beat / hopRate) * speed * 1.5;
+    float aheadDepth = HOLD_DEPTH;
+    vec2 targetId = vec2(
+      floor(hash(beat * 3.7 + 11.0) * AROUND),
+      floor((aheadDepth + travelAtBeat) * 1.2));
+    float onTarget = step(0.5, 1.0 - abs(nearestId.x - targetId.x)) * step(0.5, 1.0 - abs(nearestId.y - targetId.y));
+    float age = beatPhase + float(back);
+    gold = max(gold, onTarget * exp(-age * GOLD_DECAY));
+  }
+
+  float skipLight = gold * step(0.01, hop);
+  vec3 litScute = hsv2rgb(vec3(0.12, 0.85, 1.0)) * grout * (0.75 + 0.25 * rings);
   bands = mix(bands, litScute, skipLight);
 
   vec3 color = bands;
